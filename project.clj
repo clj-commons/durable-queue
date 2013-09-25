@@ -8,9 +8,10 @@
                                   [criterium "0.4.2"]
                                   [codox-md "0.2.0" :exclusions [org.clojure/clojure]]]}}
   :global-vars {*warn-on-reflection* true}
-  :test-selectors {:default (complement :benchmark)
-                   :benchmark :benchmark}
+  :test-selectors {:default #(not (some #{:benchmark :stress} (keys %)))
+                   :benchmark :benchmark
+                   :stress :stress}
   :plugins [[codox "0.6.6"]]
   :codox {:writer codox-md.writer/write-docs
           :include [durable-queue]}
-  :jvm-opts ^:replace ["-server"])
+  :jvm-opts ^:replace ["-server" "-Xmx100m"])

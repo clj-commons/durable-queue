@@ -166,7 +166,7 @@
                            sort
                            last)
              n (if last-number (inc last-number) 0)
-             f (io/file (str directory "/" q-name "_" n))]
+             f (io/file (str directory "/" q-name "_" (format "%06d" n)))]
 
          (when-not (.createNewFile f)
            (throw (IOException. (str "Could not create new slab file at " (.getAbsolutePath f)))))
@@ -252,7 +252,7 @@
             fsync-put?
             fsync-take?]
      :or {max-queue-size Integer/MAX_VALUE
-          complete? (constantly false)
+          complete? nil
           slab-size (* 16 1024 1024)
           fsync-put? true
           fsync-take? false}}]
@@ -286,7 +286,8 @@
              (let [tasks (->> slab
                            seq
                            (map #(vary-meta % assoc ::queue q' ::fsync? fsync-take?))
-                           (remove #(or (= :complete (status %)) (complete? @%))))]
+                           (remove #(or (= :complete (status %))
+                                      (when complete? (complete? @%)))))]
 
                (if (empty? tasks)
 
@@ -377,7 +378,7 @@
   "Marks a task as complete."
   [task]
   (status! task :complete)
-  (when (-> task meta ::fsync?)
+  (when true; (-> task meta ::fsync?)
     (sync-slab (-> task meta ::slab)))
   true)
 

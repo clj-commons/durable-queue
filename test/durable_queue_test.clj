@@ -81,3 +81,20 @@
       (do
         (put! q :foo 1)
         (complete! (take! q :foo))))))
+
+;;;
+
+(deftest ^:stress stress-queue-size
+  (clear-tmp-directory)
+
+  (let [q (queues "/tmp")
+        ary (byte-array 1e6)]
+    (dotimes [i 1e6]
+      (aset ary i (byte (rand-int 127))))
+    (dotimes [_ 2e4]
+      (put! q :stress ary))
+    (let [s (immediate-task-seq q :stress)]
+      (doseq [t s]
+        (complete! t))))
+
+  (clear-tmp-directory))
