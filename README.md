@@ -13,7 +13,7 @@ nil
 #'q
 ```
 
-This manager allows us to `put!` and `take!` tasks from named queues.  `take!` is a blocking read, and will only return once a task is available or, if a timeout is defined (in milliseconds), once the timeout elapses:
+This allows us to `put!` and `take!` tasks from named queues.  `take!` is a blocking read, and will only return once a task is available or, if a timeout is defined (in milliseconds), once the timeout elapses:
 
 ```clj
 > (take! q :foo 10 :timed-out!)
@@ -41,9 +41,9 @@ If our task fails and we want to re-enqueue it to be tried again, we can instead
 
 ### configuring the queues
 
-The queue-manager can be given a number of different options, which can affect its performance and correctness.  
+`queues` can be given a number of different options, which can affect its performance and correctness.  
 
-By default, the queue-manager assumes all tasks are idempotent.  This is necessary, since the process can die at any time and leave an in-progress task in an undefined state.  If your tasks are not idempotent, a `:complete?` predicate can be defined which, on instantiation of the queue-manager, will scan through all pre-existing task descriptors and remove those for which the predicate returns true.
+By default, it is assumed all tasks are idempotent.  This is necessary, since the process can die at any time and leave an in-progress task in an undefined state.  If your tasks are not idempotent, a `:complete?` predicate can be defined which, on instantiation of the `queues` object, will scan through all pre-existing task descriptors and remove those for which the predicate returns true.
 
 A complete list of options is as follows:
 
