@@ -214,7 +214,7 @@
 
 ;;;
 
-(defprotocol IQueueManager
+(defprotocol IQueues
   (take!
     [_ q-name]
     [_ q-name timeout timeout-val]
@@ -226,7 +226,7 @@
     "A blocking enqueue to `name`.  If `timeout` is specified, returns `false` if unable to
      enqueue within `timeout` milliseconds."))
 
-(defn queue-manager
+(defn queues
   "Creates a point of interaction for queues, backed by disk storage in `directory`.
 
    The following options can be specified:
@@ -244,7 +244,7 @@
 
        fsync-take? - if true, each `take!` will force an fsync.  Defaults to false."
   ([directory]
-     (queue-manager directory nil))
+     (queues directory nil))
   ([directory
     {:keys [max-queue-size
             complete?
@@ -301,7 +301,7 @@
                          "'max-queue-size' insufficient to hold existing tasks."))))))
              (sync-slab slab))))
 
-       (reify IQueueManager
+       (reify IQueues
 
          (take! [this q-name timeout timeout-val]
            (let [q-name (munge (name q-name))
