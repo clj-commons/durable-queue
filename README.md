@@ -55,7 +55,7 @@ A complete list of options is as follows:
 | `:fsync-put?` | Whether an fsync should be performed for each `put!`.  Defaults to true. |
 | `:fsync-take?` | Whether an fsync should be performed for each `take!`.  Defaults to false. |
 
-Disabling `:fsync-put?` will risk losing tasks if a process dies (though, depending on the hardware and underlying implementation of fsync, this may be possible regardless).  Disabling `:fsync-take?` increases the chance of a task being re-run when a proces dies.  Disabling both will increase throughput of the queue by an order of magnitude (~6k tasks/sec in the default configuration, ~100k tasks/sec with fsync completely disabled).  Tradeoffs between these two can be made by batching tasks.
+Disabling `:fsync-put?` will risk losing tasks if a process dies.  Disabling `:fsync-take?` increases the chance of a task being re-run when a proces dies.  Disabling both will increase throughput of the queue by an order of magnitude (~6k tasks/sec in the default configuration, ~100k tasks/sec with fsync completely disabled).  Tradeoffs between these two can be made by batching tasks.
 
 ### license
 
