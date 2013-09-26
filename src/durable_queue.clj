@@ -1,3 +1,4 @@
+
 (ns durable-queue
   (:require
     [clojure.java.io :as io]
@@ -29,28 +30,41 @@
 
 ;; a single task within a slab, assumes that the buffer is sliced around
 ;; the task's boundaries
-(defrecord Task [^MappedByteBuffer buf task-ref status-callback]
+(defrecord Task [buf-fn task-ref]
   clojure.lang.IDeref
   (deref [_] @task-ref)
   ITask
   (status [_]
-    (case (.get buf 1)
+    (case (.get ^ByteBuffer (buf-fn) 1)
       0 :incomplete
       1 :in-progress
       2 :complete))
   (status! [_ status]
-    (.put buf 1
+    (.put ^ByteBuffer (buf-fn) 1
       (case status
         :incomplete 0
         :in-progress 1
         :complete 2))
-    (when status-callback
-      (status-callback status))
     nil))
+
+(defn- task [buf-fn]
+  (Task. buf-fn
+    (delay
+      (-> ^ByteBuffer (buf-fn)
+        (.position 6)
+        bs/to-byte-array
+        nippy/thaw-from-bytes))))
 
 (defmethod print-method Task [t ^Writer w]
   (.write w
     (str "< " (status t) " | " (pr-str @t) " >")))
+
+;;;
+
+(defprotocol ITaskSlab
+  (^:private unmap [_] "Temporarily releases mapped byte buffer until it's needed again.")
+  (^:private ^ByteBuffer buffer [_])
+  (^:private append-to-slab! [_ descriptor]))
 
 ;; the byte layout is
 ;; [ exists? : int8
@@ -59,81 +73,103 @@
 ;;   payload : array ]
 ;; valid values for 'exists' is 0 (no), 1 (yes)
 ;; valid values for 'state' is 0 (unclaimed), 1 (in progress), 2 (complete)
-(defn- buf->task-seq [^ByteBuffer buf]
-  (lazy-seq
-    (let [buf' (.duplicate buf)]
-      (when (and
-              (pos? (.remaining buf'))
-              (== 1 (.get buf')))
-        (let [status (.get buf')
-              size (.getInt buf')
-              task-buf (-> buf
-                         .duplicate
-                         ^ByteBuffer
-                         (.limit (+ (.position buf) 6 size))
-                         .slice)]
-          (cons
-            (Task.
-              task-buf
-              (delay
-                (nippy/thaw-from-bytes
-                  (-> task-buf
+(defn- slab->task-seq
+  "Takes a slab, and returns a sequence of the tasks it contains."
+  ([slab]
+     (slab->task-seq slab 0))
+  ([slab pos]
+     (lazy-seq
+       (let [^ByteBuffer
+             buf' (-> (buffer slab)
                     .duplicate
-                    (.position 6)
-                    bs/to-byte-array)))
-              nil)
-            (buf->task-seq
-              (-> buf
-                .duplicate
-                (.position (+ (.position buf) 6 size))))))))))
+                    (.position pos))]
 
-;;;
+         ;; is there a next task, and is there space left in the buffer?
+         (when (and
+                 (pos? (.remaining buf'))
+                 (== 1 (.get buf')))
+           
+           (let [status (.get buf')
+                 size (.getInt buf')]
+             (cons
 
-(defprotocol ITaskSlab
-  (^:private append-to-slab! [_ descriptor]))
+               (vary-meta
+                 (task
+                   #(-> (buffer slab)
+                      .duplicate
+                      (.position pos)
+                      ^ByteBuffer
+                      (.limit (+ pos 6 size))
+                      .slice))
+                 assoc ::slab slab)
 
-(deftype TaskSlab [filename ^MappedByteBuffer buf]
+               (slab->task-seq
+                 slab
+                 (+ pos 6 size)))))))))
+
+(deftype TaskSlab
+  [filename
+   buf+fc+raf ;; a clearable atom-thunk holding the resources associated with the buffer
+   position   ;; an atom storing the write position of the slab
+   ]
   ITaskSlab
+
+  (buffer [_]
+    (if-let [x @buf+fc+raf]
+      (first x)
+      (first
+        (swap! buf+fc+raf
+          (fn [x]
+            (or x
+              (let [raf (RandomAccessFile. (io/file filename) "rw")
+                    fc (.getChannel raf)
+                    buf (.map fc FileChannel$MapMode/READ_WRITE 0 (.length raf))]
+                [buf fc raf])))))))
+  
+  (unmap [_]
+    (when-let [x @buf+fc+raf]
+      (let [[^MappedByteBuffer buf ^FileChannel fc ^RandomAccessFile raf] x]
+        (.close raf)
+        (.close fc)
+        (reset! buf+fc+raf nil))))
+
   (append-to-slab! [this descriptor]
     (locking this
       (let [ary (nippy/freeze descriptor)
-            cnt (count ary)]
+            cnt (count ary)
+            pos @position
+
+            ^ByteBuffer
+            buf (-> (buffer this)
+                  .duplicate
+                  (.position pos))]
         (when (> (.remaining buf) (+ (count ary) 6))
-          (let [pos (.position buf)]
-
-            ;; write to the buffer
-            (doto buf
-              (.put (byte 1)) ;; exists
-              (.put (byte 0)) ;; incomplete
-              (.putInt cnt)
-              (.put ary)
-              (.put (byte 0))            ;; next doesn't exist
-              (.position (+ pos cnt 6))) ;; position write marker for next task
-
-            ;; return a task to enqueue in-memory
-            (let [task-buf (-> buf
-                             .duplicate
-                             (.position pos)
-                             ^ByteBuffer (.limit (+ pos cnt 6))
-                             .slice)]
-              (with-meta
-                (Task.
-                  task-buf
-                  (delay
-                    (nippy/thaw-from-bytes
-                      (-> task-buf
-                        .duplicate
-                        (.position 6)
-                        bs/to-byte-array)))
-                  nil)
-                {::slab this})))))))
+          ;; write to the buffer
+          (doto buf
+            (.position pos)
+            (.put (byte 1))   ;; exists
+            (.put (byte 0))   ;; incomplete
+            (.putInt cnt)
+            (.put ary)
+            (.put (byte 0))) ;; next doesn't exist
+              
+          (swap! position + 6 cnt)
+            
+          ;; return a task to enqueue in-memory
+          (with-meta
+            (task
+              #(-> (buffer this)
+                 .duplicate
+                 (.position pos)
+                 ^ByteBuffer
+                 (.limit (+ pos 6 cnt))
+                 .slice))
+            {::slab this})))))
+  
   clojure.lang.Seqable
   (seq [this]
-    (map #(vary-meta % assoc ::slab this)
-      (-> buf
-        .duplicate
-        (.position 0)
-        buf->task-seq)))
+    (slab->task-seq this))
+
   Comparable
   (compareTo [_ x]
     (assert (instance? TaskSlab x))
@@ -144,11 +180,12 @@
 (defn- delete-slab
   [^TaskSlab slab]
   (locking fs-monitor
+    (unmap slab)
     (.delete (io/file (.filename slab)))))
 
 (defn- sync-slab
   [^TaskSlab slab]
-  (.force ^MappedByteBuffer (.buf slab)))
+  (.force ^MappedByteBuffer (buffer slab)))
 
 (defn- create-slab
   "Creates a new slab file, ensuring a new file name that is lexicographically greater than
@@ -173,27 +210,25 @@
 
          (let [raf (doto (RandomAccessFile. f "rw")
                      (.setLength size))
-               buf (-> raf
-                     .getChannel
-                     (.map FileChannel$MapMode/READ_WRITE 0 size))]
+               fc (.getChannel raf)
+               buf (.map fc FileChannel$MapMode/READ_WRITE 0 size)]
            (doto buf
              (.put 0 (byte 0))
              .force)
-           (TaskSlab. (.getAbsolutePath f) buf))))))
+           (TaskSlab. (.getAbsolutePath f) (atom [buf fc raf]) (atom 0)))))))
 
 (defn- file->slab
   "Transforms a file into a slab representing that file's contents."
   [filename]
-  (let [raf (RandomAccessFile. (io/file filename) "rw")
-        buf (-> raf 
-              .getChannel
-              (.map FileChannel$MapMode/READ_WRITE 0 (.length raf))) 
-        len (->> buf
-              buf->task-seq
-              (map :buf)
+  (let [pos (atom 0)
+        slab (TaskSlab. filename (atom nil) pos)
+        len (->> slab
+              (map #((:buf-fn %)))
               (map #(.remaining ^ByteBuffer %))
               (reduce +))]
-    (TaskSlab. filename (.position buf len))))
+    (reset! pos len)
+    (unmap slab)
+    slab))
 
 (defn- directory->queue->slab-files
   "Returns a map of queue names onto slab files for that queue."
@@ -272,11 +307,16 @@
                          (map #(atom (count (seq %))) slabs))
            create-new-slab (fn [q-name]
                              (let [slab (create-slab directory q-name slab-size)
-                                   empty-slabs (filter empty? (@queue->slabs q-name))]
+                                   empty-slabs (->> (@queue->slabs q-name)
+                                                 (map (fn [slab] (remove #(= :complete (status %)) slab)))
+                                                 (filter empty?)
+                                                 set)]
                                (doseq [s empty-slabs]
                                  (delete-slab s)) 
                                (swap! queue->slabs update-in [q-name]
-                                 #(conj (vec (remove empty? %)) slab))
+                                 #(conj (vec (remove empty-slabs %)) slab))
+                               (doseq [s (-> (@queue->slabs q-name) rest butlast)]
+                                 (unmap s))
                                slab))]
 
        ;; populate queues with pre-existing tasks
@@ -378,7 +418,7 @@
   "Marks a task as complete."
   [task]
   (status! task :complete)
-  (when true; (-> task meta ::fsync?)
+  (when (-> task meta ::fsync?)
     (sync-slab (-> task meta ::slab)))
   true)
 

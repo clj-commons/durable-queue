@@ -1,3 +1,4 @@
+
 (ns durable-queue-test
   (:require
     [clojure.java.io :as io]
@@ -91,7 +92,7 @@
         ary (byte-array 1e6)]
     (dotimes [i 1e6]
       (aset ary i (byte (rand-int 127))))
-    (dotimes [_ 2e4]
+    (dotimes [_ 10e4]
       (put! q :stress ary))
     (let [s (immediate-task-seq q :stress)]
       (doseq [t s]
