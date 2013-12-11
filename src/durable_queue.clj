@@ -1,4 +1,3 @@
-
 (ns durable-queue
   (:require
     [clojure.java.io :as io]
@@ -129,6 +128,7 @@
   (unmap [_]
     (when-let [x @buf+fc+raf]
       (let [[^MappedByteBuffer buf ^FileChannel fc ^RandomAccessFile raf] x]
+        (.force buf)
         (.close raf)
         (.close fc)
         (reset! buf+fc+raf nil))))
@@ -308,13 +308,22 @@
            create-new-slab (fn [q-name]
                              (let [slab (create-slab directory q-name slab-size)
                                    empty-slabs (->> (@queue->slabs q-name)
-                                                 (map (fn [slab] (remove #(= :complete (status %)) slab)))
-                                                 (filter empty?)
+                                                 (filter (fn [slab]
+                                                           (->> slab
+                                                             (remove #(= :complete (status %)))
+                                                             empty?)))
                                                  set)]
+
+                               ;; delete empty slabs
                                (doseq [s empty-slabs]
-                                 (delete-slab s)) 
+                                 (delete-slab s))
+
+                               ;; update list of active slabs
                                (swap! queue->slabs update-in [q-name]
                                  #(conj (vec (remove empty-slabs %)) slab))
+
+                               ;; unmap all slabs but the first (which is being consumed)
+                               ;; and the last (which is being written to)
                                (doseq [s (-> (@queue->slabs q-name) rest butlast)]
                                  (unmap s))
                                slab))]
@@ -353,8 +362,8 @@
                             (.poll q timeout TimeUnit/MILLISECONDS))]
                  (do
                    (status! t :in-progress)
-                   (when fsync-take?
-                     (sync-slab (-> t meta ::slab)))
+                   ;; we don't need to fsync here, because in-progress and incomplete
+                   ;; are effectively equivalent on restart
                    t)
                  timeout-val)
                (catch TimeoutException _
@@ -397,22 +406,37 @@
 
 (defn task-seq
   "Returns an infinite lazy sequence of tasks for `q-name`."
-  [q-manager q-name]
+  [qs q-name]
   (lazy-seq
     (cons
-      (take! q-manager q-name)
-      (task-seq q-manager q-name))))
+      (take! qs q-name)
+      (task-seq qs q-name))))
 
 (defn immediate-task-seq
   "Returns a finite lazy sequence of tasks for `q-name` which terminates once there are
    no more tasks immediately available."
-  [q-manager q-name]
+  [qs q-name]
   (lazy-seq
-    (let [task (take! q-manager q-name 0 ::none)]
+    (let [task (take! qs q-name 0 ::none)]
       (when-not (= ::none task)
         (cons
           task
-          (immediate-task-seq q-manager q-name))))))
+          (immediate-task-seq qs q-name))))))
+
+(defn interval-task-seq
+  "Returns a lazy sequence of tasks that can be consumed in `interval` milliseconds.  This will
+   terminate after that time has elapsed, even if there are still tasks immediately available."
+  [qs q-name interval]
+  (let [now (System/currentTimeMillis)]
+    (lazy-seq
+      (let [now' (System/currentTimeMillis)
+            remaining (- interval (- now' now))]
+        (when (pos? remaining)
+          (let [task (take! qs q-name remaining ::none)]
+            (when-not (= ::none task)
+              (cons
+                task
+                (interval-task-seq q-name (- interval (- (System/currentTimeMillis) now)))))))))))
 
 (defn complete!
   "Marks a task as complete."

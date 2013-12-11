@@ -1,4 +1,3 @@
-
 (ns durable-queue-test
   (:require
     [clojure.java.io :as io]
@@ -19,6 +18,12 @@
     (doseq [t tasks]
       (put! q :foo t))
     (is (= tasks (map deref (immediate-task-seq q :foo))))))
+
+(deftest test-partial-slab-writes
+  (clear-tmp-directory)
+  (dotimes [i 10]
+    (put! (queues "/tmp") :foo i))
+  (is (= (range 10) (map deref (immediate-task-seq (queues "/tmp") :foo)))))
 
 (deftest test-retry
   (clear-tmp-directory)

@@ -1,9 +1,9 @@
-(defproject durable-queue "0.1.0-SNAPSHOT"
+(defproject factual/durable-queue "0.1.0-SNAPSHOT"
   :description "a in-process task-queue that is backed by disk."
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[com.taoensso/nippy "2.1.0"]
-                 [byte-streams "0.1.6-SNAPSHOT"]]
+  :dependencies [[com.taoensso/nippy "2.4.1"]
+                 [byte-streams "0.1.6"]]
   :profiles {:dev {:dependencies [[org.clojure/clojure "1.5.1"]
                                   [criterium "0.4.2"]
                                   [codox-md "0.2.0" :exclusions [org.clojure/clojure]]]}}
