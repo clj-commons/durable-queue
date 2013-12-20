@@ -114,16 +114,17 @@
   ITaskSlab
 
   (buffer [_]
-    (if-let [x @buf+fc+raf]
-      (first x)
-      (first
-        (swap! buf+fc+raf
-          (fn [x]
-            (or x
-              (let [raf (RandomAccessFile. (io/file filename) "rw")
-                    fc (.getChannel raf)
-                    buf (.map fc FileChannel$MapMode/READ_WRITE 0 (.length raf))]
-                [buf fc raf])))))))
+    (locking buf+fc+raf
+      (if-let [x @buf+fc+raf]
+        (first x)
+        (first
+          (swap! buf+fc+raf
+            (fn [x]
+              (or x
+                (let [raf (RandomAccessFile. (io/file filename) "rw")
+                      fc (.getChannel raf)
+                      buf (.map fc FileChannel$MapMode/READ_WRITE 0 (.length raf))]
+                  [buf fc raf]))))))))
   
   (unmap [_]
     (when-let [x @buf+fc+raf]
@@ -143,6 +144,7 @@
             buf (-> (buffer this)
                   .duplicate
                   (.position pos))]
+
         (when (> (.remaining buf) (+ (count ary) 6))
           ;; write to the buffer
           (doto buf
@@ -223,6 +225,7 @@
   (let [pos (atom 0)
         slab (TaskSlab. filename (atom nil) pos)
         len (->> slab
+              seq
               (map #((:buf-fn %)))
               (map #(.remaining ^ByteBuffer %))
               (reduce +))]
@@ -288,7 +291,7 @@
             fsync-take?]
      :or {max-queue-size Integer/MAX_VALUE
           complete? nil
-          slab-size (* 16 1024 1024)
+          slab-size (* 64 1024 1024)
           fsync-put? true
           fsync-take? false}}]
 
@@ -310,6 +313,7 @@
                                    empty-slabs (->> (@queue->slabs q-name)
                                                  (filter (fn [slab]
                                                            (->> slab
+                                                             seq
                                                              (remove #(= :complete (status %)))
                                                              empty?)))
                                                  set)]
@@ -329,27 +333,38 @@
                                slab))]
 
        ;; populate queues with pre-existing tasks
-       (doseq [[q slabs] @queue->slabs]
-         (let [^LinkedBlockingQueue q' (queue q)]
-           (doseq [slab slabs]
-             (let [tasks (->> slab
-                           seq
-                           (map #(vary-meta % assoc ::queue q' ::fsync? fsync-take?))
-                           (remove #(or (= :complete (status %))
-                                      (when complete? (complete? @%)))))]
+       (let [empty-slabs (atom #{})]
+         (doseq [[q slabs] @queue->slabs]
+           (let [^LinkedBlockingQueue q' (queue q)]
+             (doseq [slab slabs]
+               (let [tasks (->> slab
+                             seq
+                             (map #(vary-meta % assoc ::queue q' ::fsync? fsync-take?))
+                             (remove #(or (= :complete (status %))
+                                        (when complete? (complete? @%)))))]
+                 
+                 (if (empty? tasks)
+                   
+                   ;; if there aren't any active tasks, just delete the slab
+                   (do
+                     (delete-slab slab)
+                     (swap! empty-slabs conj slab))
+                   
+                   (doseq [task tasks]
+                     (status! task :incomplete)
+                     (when-not (.offer q' task)
+                       (throw
+                         (IllegalArgumentException.
+                           "'max-queue-size' insufficient to hold existing tasks."))))))
+               (sync-slab slab))))
 
-               (if (empty? tasks)
-
-                 ;; if there aren't any active tasks, just delete the slab
-                 (delete-slab slab)
-
-                 (doseq [task tasks]
-                   (status! task :incomplete)
-                   (when-not (.offer q' task)
-                     (throw
-                       (IllegalArgumentException.
-                         "'max-queue-size' insufficient to hold existing tasks."))))))
-             (sync-slab slab))))
+         (swap! queue->slabs
+           (fn [m]
+             (->> m
+               (map
+                 (fn [[q slabs]]
+                   [q (remove @empty-slabs slabs)]))
+               (into {})))))
 
        (reify IQueues
 
@@ -386,6 +401,12 @@
                                        slab
                                        (create-new-slab q-name))
                                task  (or task (append-to-slab! slab task-descriptor))]
+
+                           (when-not task
+                             (throw
+                               (IllegalArgumentException.
+                                 (str "Can't enqueue task whose serialized representation is larger than :slab-size, which is currently " slab-size))))
+                           
                            (when fsync-put?
                              (sync-slab slab))
                            task))
