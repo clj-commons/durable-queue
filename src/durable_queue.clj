@@ -3,12 +3,17 @@
     [clojure.java.io :as io]
     [byte-streams :as bs]
     [clojure.string :as str]
+    [primitive-math :as p]
     [taoensso.nippy :as nippy])
   (:import
     [java.util.concurrent
      LinkedBlockingQueue
      TimeoutException
      TimeUnit]
+    [java.util.zip
+     CRC32]
+    [java.util.concurrent.locks
+     ReentrantReadWriteLock]
     [java.io
      Writer
      File
@@ -23,6 +28,39 @@
 
 ;;;
 
+(defmacro ^:private with-lock [lock & body]
+  `(let [^ReentrantReadWriteLock lock# ~lock
+         read-lock# (.readLock lock#)]
+     (do
+       (.lock read-lock#)
+       (try
+         ~@body
+         (finally
+           (.unlock read-lock#))))))
+
+(defmacro ^:private with-exclusive-lock [lock & body]
+  `(let [^ReentrantReadWriteLock lock# ~lock
+         write-lock# (.writeLock lock#)]
+     (do
+       (.lock write-lock#)
+       (try
+         ~@body
+         (finally
+           (.unlock write-lock#))))))
+
+;;;
+
+(defn- checksum ^long [^long length ^bytes ary]
+  (let [crc (CRC32.)]
+    (dotimes [i 4]
+      (.update crc (p/>> length i)))
+    (.update crc ary)
+    (.getValue crc)))
+
+;;;
+
+(def ^:private ^:const header-size 14)
+
 (defprotocol ITask
   (^:private status [_] "Returns the task status")
   (^:private status! [_ status] "Sets the task status"))
@@ -31,7 +69,8 @@
 ;; the task's boundaries
 (defrecord Task [buf-fn task-ref]
   clojure.lang.IDeref
-  (deref [_] @task-ref)
+  (deref [_]
+    @task-ref)
   ITask
   (status [_]
     (case (.get ^ByteBuffer (buf-fn) 1)
@@ -46,13 +85,17 @@
         :complete 2))
     nil))
 
-(defn- task [buf-fn]
-  (Task. buf-fn
-    (delay
-      (-> ^ByteBuffer (buf-fn)
-        (.position 6)
-        bs/to-byte-array
-        nippy/thaw-from-bytes))))
+(defn- task [buf-fn lock]
+  (with-lock lock
+    (Task. buf-fn
+      (delay
+        (let [^ByteBuffer buf (buf-fn)
+              checksum' (.getLong buf 2)
+              ary (bs/to-byte-array (.position buf header-size))]
+          (when-not (== (checksum (.getInt buf 10) ary) checksum')
+            (prn (.get buf 0) (.get buf 1) (.getLong buf 2) (.getInt buf 10))
+            (throw (IOException. "checksum mismatch")))
+          (nippy/thaw-from-bytes ary))))))
 
 (defmethod print-method Task [t ^Writer w]
   (.write w
@@ -63,13 +106,15 @@
 (defprotocol ITaskSlab
   (^:private unmap [_] "Temporarily releases mapped byte buffer until it's needed again.")
   (^:private ^ByteBuffer buffer [_])
-  (^:private append-to-slab! [_ descriptor]))
+  (^:private append-to-slab! [_ descriptor])
+  (^:private read-write-lock [_]))
 
 ;; the byte layout is
-;; [ exists? : int8
-;;   state   : int8 
-;;   size    : int32 
-;;   payload : array ]
+;; [ exists?  : int8
+;;   state    : int8
+;;   checksum : int64
+;;   size     : int32 
+;;   payload  : array ]
 ;; valid values for 'exists' is 0 (no), 1 (yes)
 ;; valid values for 'state' is 0 (unclaimed), 1 (in progress), 2 (complete)
 (defn- slab->task-seq
@@ -89,6 +134,7 @@
                  (== 1 (.get buf')))
            
            (let [status (.get buf')
+                 checksum (.getLong buf')
                  size (.getInt buf')]
              (cons
 
@@ -98,20 +144,24 @@
                       .duplicate
                       (.position pos)
                       ^ByteBuffer
-                      (.limit (+ pos 6 size))
-                      .slice))
+                      (.limit (+ pos header-size size))
+                      .slice)
+                   (read-write-lock slab))
                  assoc ::slab slab)
 
                (slab->task-seq
                  slab
-                 (+ pos 6 size)))))))))
+                 (+ pos header-size size)))))))))
 
 (deftype TaskSlab
   [filename
    buf+fc+raf ;; a clearable atom-thunk holding the resources associated with the buffer
    position   ;; an atom storing the write position of the slab
-   ]
+   lock]
   ITaskSlab
+
+  (read-write-lock [_]
+    lock)
 
   (buffer [_]
     (locking buf+fc+raf
@@ -121,18 +171,20 @@
           (swap! buf+fc+raf
             (fn [x]
               (or x
-                (let [raf (RandomAccessFile. (io/file filename) "rw")
+                (let [_ (assert (.exists (io/file filename)))
+                      raf (RandomAccessFile. (io/file filename) "rw")
                       fc (.getChannel raf)
                       buf (.map fc FileChannel$MapMode/READ_WRITE 0 (.length raf))]
                   [buf fc raf]))))))))
   
   (unmap [_]
-    (when-let [x @buf+fc+raf]
-      (let [[^MappedByteBuffer buf ^FileChannel fc ^RandomAccessFile raf] x]
-        (.force buf)
-        (.close raf)
-        (.close fc)
-        (reset! buf+fc+raf nil))))
+    (with-exclusive-lock lock
+      (when-let [x @buf+fc+raf]
+        (let [[^MappedByteBuffer buf ^FileChannel fc ^RandomAccessFile raf] x]
+          (.force buf)
+          (.close raf)
+          (.close fc)
+          (reset! buf+fc+raf nil)))))
 
   (append-to-slab! [this descriptor]
     (locking this
@@ -145,17 +197,18 @@
                   .duplicate
                   (.position pos))]
 
-        (when (> (.remaining buf) (+ (count ary) 6))
+        (when (> (.remaining buf) (+ (count ary) header-size))
           ;; write to the buffer
           (doto buf
             (.position pos)
             (.put (byte 1))   ;; exists
             (.put (byte 0))   ;; incomplete
+            (.putLong (checksum cnt ary))
             (.putInt cnt)
             (.put ary)
             (.put (byte 0))) ;; next doesn't exist
               
-          (swap! position + 6 cnt)
+          (swap! position + header-size cnt)
             
           ;; return a task to enqueue in-memory
           (with-meta
@@ -164,8 +217,9 @@
                  .duplicate
                  (.position pos)
                  ^ByteBuffer
-                 (.limit (+ pos 6 cnt))
-                 .slice))
+                 (.limit (+ pos header-size cnt))
+                 .slice)
+              lock)
             {::slab this})))))
   
   clojure.lang.Seqable
@@ -187,7 +241,8 @@
 
 (defn- sync-slab
   [^TaskSlab slab]
-  (.force ^MappedByteBuffer (buffer slab)))
+  (when (.exists (io/file (.filename slab)))
+    (.force ^MappedByteBuffer (buffer slab))))
 
 (defn- create-slab
   "Creates a new slab file, ensuring a new file name that is lexicographically greater than
@@ -217,13 +272,13 @@
            (doto buf
              (.put 0 (byte 0))
              .force)
-           (TaskSlab. (.getAbsolutePath f) (atom [buf fc raf]) (atom 0)))))))
+           (TaskSlab. (.getAbsolutePath f) (atom [buf fc raf]) (atom 0) (ReentrantReadWriteLock.)))))))
 
 (defn- file->slab
   "Transforms a file into a slab representing that file's contents."
   [filename]
   (let [pos (atom 0)
-        slab (TaskSlab. filename (atom nil) pos)
+        slab (TaskSlab. filename (atom nil) pos (ReentrantReadWriteLock.))
         len (->> slab
               seq
               (map #((:buf-fn %)))
@@ -355,8 +410,9 @@
                      (when-not (.offer q' task)
                        (throw
                          (IllegalArgumentException.
-                           "'max-queue-size' insufficient to hold existing tasks."))))))
-               (sync-slab slab))))
+                           "'max-queue-size' insufficient to hold existing tasks.")))))
+
+                 (sync-slab slab)))))
 
          (swap! queue->slabs
            (fn [m]
