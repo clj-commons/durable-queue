@@ -39,6 +39,13 @@ true
 
 If our task fails and we want to re-enqueue it to be tried again, we can instead call `(retry! task)`.
 
+To get a description of the current state of the queue, we can use `stats`, which returns a map of queue names onto various counts:
+
+```clj
+> (stats q)
+{"foo" {:enqueued 2, :retried 0, :completed 1, :in-progress 1}}
+```
+
 ### configuring the queues
 
 `queues` can be given a number of different options, which can affect its performance and correctness.  
