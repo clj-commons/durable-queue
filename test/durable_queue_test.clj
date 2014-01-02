@@ -27,7 +27,7 @@
 
 (deftest test-retry
   (clear-tmp-directory)
-  (let [q (queues "/tmp")]
+  (with-open [q (queues "/tmp")]
 
     (doseq [t (range 10)]
       (put! q :foo t))
@@ -40,18 +40,18 @@
         (put! q :foo t))))
 
   ;; create a new manager, which will mark all in-progress tasks as incomplete
-  (let [q (queues "/tmp")
-        tasks' (immediate-task-seq q :foo)]
-    (is (= (range 5 15) (map deref tasks')))
-    (doseq [t (take 5 tasks')]
-      (complete! t)))
+  (with-open [q (queues "/tmp")]
+    (let [tasks' (immediate-task-seq q :foo)]
+      (is (= (range 5 15) (map deref tasks')))
+      (doseq [t (take 5 tasks')]
+        (complete! t))))
     
-  (let [q (queues "/tmp")
-        tasks' (immediate-task-seq q :foo)]
-    (is (= (range 10 15) (map deref tasks')))
-    (doseq [t (range 15 20)]
-      (put! q :foo t)))
-
+  (with-open [q (queues "/tmp")]
+    (let [tasks' (immediate-task-seq q :foo)]
+      (is (= (range 10 15) (map deref tasks')))
+      (doseq [t (range 15 20)]
+        (put! q :foo t))))
+  
   (let [q (queues "/tmp" {:complete? even?})]
     (is (= (remove even? (range 10 20)) (map deref (immediate-task-seq q :foo))))))
 
@@ -93,14 +93,19 @@
 (deftest ^:stress stress-queue-size
   (clear-tmp-directory)
 
-  (let [q (queues "/tmp")
-        ary (byte-array 1e6)]
-    (dotimes [i 1e6]
-      (aset ary i (byte (rand-int 127))))
-    (dotimes [_ 10e4]
-      (put! q :stress ary))
+  (with-open [q (queues "/tmp")]
+    (let [ary (byte-array 1e6)]
+      (dotimes [i 1e6]
+        (aset ary i (byte (rand-int 127))))
+      (dotimes [_ 1e3]
+        (put! q :stress ary))))
+
+  (with-open [q (queues "/tmp" {:complete? (constantly false)})]
+    (let [s (doall (immediate-task-seq q :stress))]
+      (doseq [t s]
+        (retry! t)))
     (let [s (immediate-task-seq q :stress)]
       (doseq [t s]
         (complete! t))))
-
+  
   (clear-tmp-directory))

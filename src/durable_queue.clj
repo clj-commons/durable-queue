@@ -69,19 +69,23 @@
 
 ;; a single task within a slab, assumes that the buffer is sliced around
 ;; the task's boundaries
-(defrecord Task [buf-fn task-ref]
+(defrecord Task [buf-fn status deserializer]
   clojure.lang.IDeref
   (deref [_]
-    @task-ref)
+    (deserializer))
   ITask
   (status [_]
-    (case (.get ^ByteBuffer (buf-fn) 1)
-      0 :incomplete
-      1 :in-progress
-      2 :complete))
-  (status! [_ status]
+    (or @status
+      (let [s (case (.get ^ByteBuffer (buf-fn) 1)
+                0 :incomplete
+                1 :in-progress
+                2 :complete)]
+        (reset! status s)
+        s)))
+  (status! [_ s]
+    (reset! status s)
     (.put ^ByteBuffer (buf-fn) 1
-      (case status
+      (case s
         :incomplete 0
         :in-progress 1
         :complete 2))
@@ -89,8 +93,10 @@
 
 (defn- task [buf-fn lock]
   (with-lock lock
-    (Task. buf-fn
-      (delay
+    (Task.
+      buf-fn
+      (atom nil)
+      (fn []
         (let [^ByteBuffer buf (buf-fn)
               checksum' (.getLong buf 2)
               ary (bs/to-byte-array (.position buf header-size))]
@@ -107,6 +113,7 @@
 
 (defprotocol ITaskSlab
   (^:private unmap [_] "Temporarily releases mapped byte buffer until it's needed again.")
+  (^:private mapped? [_] "Returns true if the slab is actively mapped into memory.")
   (^:private ^ByteBuffer buffer [_])
   (^:private append-to-slab! [_ descriptor])
   (^:private read-write-lock [_]))
@@ -183,15 +190,19 @@
                       fc (.getChannel raf)
                       buf (.map fc FileChannel$MapMode/READ_WRITE 0 (.length raf))]
                   [buf fc raf]))))))))
+
+  (mapped? [_]
+    (boolean @buf+fc+raf))
   
   (unmap [_]
     (with-exclusive-lock lock
       (when-let [x @buf+fc+raf]
-        (let [[^MappedByteBuffer buf ^FileChannel fc ^RandomAccessFile raf] x]
-          (.force buf)
-          (.close raf)
-          (.close fc)
-          (reset! buf+fc+raf nil)))))
+        (when (.exists (io/file filename))
+          (let [[^MappedByteBuffer buf ^FileChannel fc ^RandomAccessFile raf] x]
+            (.force buf)
+            (.close raf)
+            (.close fc)
+            (reset! buf+fc+raf nil))))))
 
   (append-to-slab! [this descriptor]
     (locking this
@@ -423,7 +434,8 @@
                                slab))
            populate-stats #(if-not (contains? @queue->stats %)
                              (swap! queue->stats assoc % (initial-stats 0)))
-           this-ref (promise)]
+           this-ref (promise)
+           current-slab (atom nil)]
 
        ;; populate queues with pre-existing tasks
        (let [empty-slabs (atom #{})]
@@ -438,7 +450,7 @@
                                      ::queue-name q
                                      ::fsync? fsync-take?))
                              (remove #(or (= :complete (status %))
-                                        (when complete? (complete? @%)))))]
+                                        (and complete? (complete? @%)))))]
                  
                  (if (empty? tasks)
                    
@@ -447,14 +459,14 @@
                      (delete-slab slab)
                      (swap! empty-slabs conj slab))
                    
-                   (doseq [task tasks]
-                     (status! task :incomplete)
-                     (when-not (.offer q' task)
-                       (throw
-                         (IllegalArgumentException.
-                           "'max-queue-size' insufficient to hold existing tasks.")))))
-
-                 (sync-slab slab)))
+                   (do
+                     (doseq [task tasks]
+                       (status! task :incomplete)
+                       (when-not (.offer q' task)
+                         (throw
+                           (IllegalArgumentException.
+                             "'max-queue-size' insufficient to hold existing tasks."))))
+                     (unmap slab)))))
 
              (let [^AtomicLong counter (get-in @queue->stats [q :enqueued])]
                (.addAndGet counter (count (queue q))))))
@@ -468,7 +480,14 @@
                (into {})))))
 
        (deliver this-ref
-         (reify IQueues
+         (reify
+
+           java.io.Closeable
+           (close [_]
+             (doseq [s (->> @queue->slabs vals (apply concat))]
+               (unmap s)))
+
+           IQueues
            
            (mark-retry! [_ q-name]
              (populate-stats q-name)
@@ -483,7 +502,15 @@
           (stats [_]
             (let [ks (keys @queue->stats)]
               (zipmap ks
-                (map #(immediate-stats (queue %) (get @queue->stats %)) ks))))
+                (map
+                  (fn [q-name]
+                    (merge
+                      {:num-slabs (-> @queue->slabs (get q-name) count)
+                       :num-active-slabs (->> (get @queue->slabs q-name)
+                                           (filter mapped?)
+                                           count)}
+                      (immediate-stats (queue q-name) (get @queue->stats q-name))))
+                  ks))))
 
           (take! [this q-name timeout timeout-val]
             (let [q-name (munge (name q-name))
@@ -492,10 +519,25 @@
                 (if-let [t (if (zero? timeout)
                              (.poll q)
                              (.poll q timeout TimeUnit/MILLISECONDS))]
-                  (do
+
+                  (let [slab (-> t meta ::slab)]
+
+                    ;; if we've moved onto a new slab, unmap all but the current and
+                    ;; last slabs
+                    (let [old-slab @current-slab]
+                      (when-not (= slab old-slab)
+                        (loop [old-slab old-slab]
+                          (if (compare-and-set! current-slab old-slab slab)
+                            (doseq [s (->> (get @queue->slabs q-name)
+                                        butlast
+                                        (remove #(= slab %)))]
+                              (unmap s))
+                            (recur @current-slab)))))
+                    
                     (status! t :in-progress)
                     ;; we don't need to fsync here, because in-progress and incomplete
                     ;; are effectively equivalent on restart
+
                     t)
                   timeout-val)
                 (catch TimeoutException _
