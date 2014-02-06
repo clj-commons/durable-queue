@@ -30,7 +30,9 @@ true
 "a task"
 ```
 
-Notice that the task has a value describing its progress, and a value describing the task itself.  We can get the task descriptor by dereferencing the returned task.  However, just because we've taken the task doesn't mean we've completed the action associated with it.  In order to make sure the task isn't retried on restart, we must mark it as `complete!`.
+Notice that the task has a value describing its progress, and a value describing the task itself.  We can get the task descriptor by dereferencing the returned task.  Note that since the task is persisted to disk and anything on disk may be corrupted, this involves a checksum which may fail and throw an `IOException`.  Any software which wants to be robust to all failure modes should alway dereference within a `try`/`catch` caluse.
+
+Caliing `take!` removed the task from the queue, but just because we've taken the task doesn't mean we've completed the action associated with it.  In order to make sure the task isn't retried on restart, we must mark it as `complete!`.
 
 ```clj
 > (put! q :foo "another task")
@@ -41,14 +43,23 @@ true
 true
 ```
 
-If our task fails and we want to re-enqueue it to be tried again, we can instead call `(retry! task)`.
+If our task fails and we want to re-enqueue it to be tried again, we can instead call `(retry! task)`.  Tasks which are marked for retry are added to the end of the current queue.
 
 To get a description of the current state of the queue, we can use `stats`, which returns a map of queue names onto various counts:
 
 ```clj
 > (stats q)
-{"foo" {:enqueued 2, :retried 0, :completed 1, :in-progress 1}}
+{:enqueued 2, :retried 0, :completed 1, :in-progress 1, :num-slabs 1, :num-active-slabs 1}
 ```
+
+| field | description |
+|-------|-------------|
+| `:enqueued` | the number of tasks which have been enqueued via `put!`, including any pre-existing tasks on-disk when the queues were initialized |
+| `:retried` | the number of tasks which have been retried via `retry!` |
+| `:completed` | the number of tasks which have been completed via `complete!` |
+| `:in-progress` | the number of tasks which have been consumed via `take!`, but are not yet complete |
+| `:num-slabs` | the number of underlying files which are being used to store tasks |
+| `:num-active-slabs` | the number of underlying files which are currently open and mapped into memory |
 
 ### configuring the queues
 

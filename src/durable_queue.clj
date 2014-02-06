@@ -332,8 +332,8 @@
 
 (defn- immediate-stats [^LinkedBlockingQueue q {:keys [enqueued retried completed]}]
   (let [cnt (.size q)
-        enqueued (.get ^AtomicLong enqueued)
-        completed (.get ^AtomicLong completed)]
+        completed (.get ^AtomicLong completed)
+        enqueued (.get ^AtomicLong enqueued)] 
     {:enqueued enqueued 
      :retried (.get ^AtomicLong retried)
      :completed completed
