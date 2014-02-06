@@ -30,7 +30,7 @@ true
 "a task"
 ```
 
-Notice that the task has a value describing its progress, and a value describing the task itself.  We can get the task descriptor by dereferencing the returned task.  Note that since the task is persisted to disk and anything on disk may be corrupted, this involves a checksum which may fail and throw an `IOException`.  Any software which wants to be robust to all failure modes should alway dereference within a `try`/`catch` caluse.
+Notice that the task has a value describing its progress, and a value describing the task itself.  We can get the task descriptor by dereferencing the returned task.  Note that since the task is persisted to disk and anything on disk may be corrupted, this involves a checksum which may fail and throw an `IOException`.  Any software which wants to be robust to all failure modes should alway dereference within a `try`/`catch` clause.
 
 Caliing `take!` removed the task from the queue, but just because we've taken the task doesn't mean we've completed the action associated with it.  In order to make sure the task isn't retried on restart, we must mark it as `complete!`.
 
@@ -49,7 +49,12 @@ To get a description of the current state of the queue, we can use `stats`, whic
 
 ```clj
 > (stats q)
-{:enqueued 2, :retried 0, :completed 1, :in-progress 1, :num-slabs 1, :num-active-slabs 1}
+{:enqueued 2, 
+ :retried 0, 
+ :completed 1, 
+ :in-progress 1, 
+ :num-slabs 1, 
+ :num-active-slabs 1}
 ```
 
 | field | description |
