@@ -1,6 +1,6 @@
 ![](docs/EasterIsland.jpg)
 
-This library implements a disk-backed task queue, allowing for queues that can survive processes dying, and whose size are bounded by available disk rather than memory.
+This library implements a disk-backed task queue, allowing for queues that can survive processes dying, and whose size is bounded by available disk rather than memory.
 
 ### usage
 
