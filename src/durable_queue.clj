@@ -6,6 +6,8 @@
     [primitive-math :as p]
     [taoensso.nippy :as nippy])
   (:import
+    [java.lang.reflect
+     Method]
     [java.util.concurrent
      LinkedBlockingQueue
      TimeoutException
@@ -131,46 +133,67 @@
   ([slab]
      (slab->task-seq slab 0))
   ([slab pos]
-     (seq
-       (lazy-seq
-         (try
-           (let [^ByteBuffer
-                 buf' (-> (buffer slab)
+     (try
+       (let [^ByteBuffer
+             buf' (-> (buffer slab)
+                    .duplicate
+                    (.position pos))]
+         
+         ;; is there a next task, and is there space left in the buffer?
+         (when (and
+                 (pos? (.remaining buf'))
+                 (== 1 (.get buf')))
+           
+           (lazy-seq
+             (let [status (.get buf')
+                   checksum (.getLong buf')
+                   size (.getInt buf')]
+               (cons
+                 
+                 (vary-meta
+                   (task
+                     #(-> (buffer slab)
                         .duplicate
-                        (.position pos))]
-             
-             ;; is there a next task, and is there space left in the buffer?
-             (when (and
-                     (pos? (.remaining buf'))
-                     (== 1 (.get buf')))
-               
-               (let [status (.get buf')
-                     checksum (.getLong buf')
-                     size (.getInt buf')]
-                 (cons
-                   
-                   (vary-meta
-                     (task
-                       #(-> (buffer slab)
-                          .duplicate
-                          (.position pos)
-                          ^ByteBuffer
-                          (.limit (+ pos header-size size))
-                          .slice)
-                       (read-write-lock slab))
-                     assoc ::slab slab)
-                   
-                   (slab->task-seq
-                     slab
-                     (+ pos header-size size))))))
-           (catch Throwable e
-             ;; this implies unrecoverable corruption
-             nil
-             ))))))
+                        (.position pos)
+                        ^ByteBuffer
+                        (.limit (+ pos header-size size))
+                        .slice)
+                     (read-write-lock slab))
+                   assoc ::slab slab)
+                 
+                 (slab->task-seq
+                   slab
+                   (+ pos header-size size)))))))
+       (catch Throwable e
+         ;; this implies unrecoverable corruption
+         nil
+         ))))
+
+(let [clean (delay
+                (doto (.getMethod
+                        (Class/forName "sun.misc.Cleaner")
+                        "clean"
+                        nil)
+                  (.setAccessible true)))]
+  (defn- unmap-buffer
+    "A delightful endrun on the JVM's mmap GC mechanism"
+    [^ByteBuffer buf]
+    (when (.isDirect buf)
+      (try
+        
+        (let [^Method clean @clean
+              cleaner (doto (.getMethod (class buf) "cleaner" nil)
+                      (.setAccessible true))]
+          (.invoke ^Method clean
+            (.invoke cleaner buf nil)
+            nil))
+        (catch Throwable e
+          ;; not much we can do here, sadly
+          )))))
 
 (deftype TaskSlab
   [filename
-   buf+fc+raf ;; a clearable atom-thunk holding the resources associated with the buffer
+   buf        ;; a clearable atom holding the buffer
    position   ;; an atom storing the write position of the slab
    lock]
   ITaskSlab
@@ -179,31 +202,30 @@
     lock)
 
   (buffer [_]
-    (locking buf+fc+raf
-      (if-let [x @buf+fc+raf]
-        (first x)
-        (first
-          (swap! buf+fc+raf
-            (fn [x]
-              (or x
-                (let [_ (assert (.exists (io/file filename)))
-                      raf (RandomAccessFile. (io/file filename) "rw")
-                      fc (.getChannel raf)
-                      buf (.map fc FileChannel$MapMode/READ_WRITE 0 (.length raf))]
-                  [buf fc raf]))))))))
+    (or @buf
+      (swap! buf
+        (fn [buf]
+          (or buf
+            (let [_ (assert (.exists (io/file filename)))
+                  raf (RandomAccessFile. (io/file filename) "rw")]
+              (try
+                (let [fc (.getChannel raf)]
+                  (try
+                    (.map fc FileChannel$MapMode/READ_WRITE 0 (.length raf))
+                    (finally
+                      (.close fc))))
+                (finally
+                  (.close raf)))))))))
 
   (mapped? [_]
-    (boolean @buf+fc+raf))
+    (boolean @buf))
   
   (unmap [_]
     (with-exclusive-lock lock
-      (when-let [x @buf+fc+raf]
-        (when (.exists (io/file filename))
-          (let [[^MappedByteBuffer buf ^FileChannel fc ^RandomAccessFile raf] x]
-            (.force buf)
-            (.close raf)
-            (.close fc)
-            (reset! buf+fc+raf nil))))))
+      (when (.exists (io/file filename))
+        (when-let [buf @buf]
+          (unmap-buffer buf))
+        (reset! buf nil))))
 
   (append-to-slab! [this descriptor]
     (locking this
@@ -285,13 +307,21 @@
            (throw (IOException. (str "Could not create new slab file at " (.getAbsolutePath f)))))
 
          (let [raf (doto (RandomAccessFile. f "rw")
-                     (.setLength size))
-               fc (.getChannel raf)
-               buf (.map fc FileChannel$MapMode/READ_WRITE 0 size)]
-           (doto buf
-             (.put 0 (byte 0))
-             .force)
-           (TaskSlab. (.getAbsolutePath f) (atom [buf fc raf]) (atom 0) (ReentrantReadWriteLock.)))))))
+                     (.setLength size))]
+           (try
+             (let [fc (.getChannel raf)]
+               (try
+                 (let [buf (.map fc FileChannel$MapMode/READ_WRITE 0 size)]
+                   (doto buf
+                     (.put 0 (byte 0))
+                     .force)
+                   (TaskSlab. (.getAbsolutePath f) (atom buf) (atom 0) (ReentrantReadWriteLock.)))
+                 (finally
+                   (.close fc))))
+             (finally
+               (.close raf)))
+
+)))))
 
 (defn- file->slab
   "Transforms a file into a slab representing that file's contents."

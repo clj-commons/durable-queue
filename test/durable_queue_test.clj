@@ -97,7 +97,7 @@
     (let [ary (byte-array 1e6)]
       (dotimes [i 1e6]
         (aset ary i (byte (rand-int 127))))
-      (dotimes [_ 1e3]
+      (dotimes [_ 1e5]
         (put! q :stress ary))))
 
   (with-open [q (queues "/tmp" {:complete? (constantly false)})]
