@@ -1,6 +1,6 @@
 ![](docs/EasterIsland.jpg)
 
-This library implements a disk-backed task queue, allowing for queues that can survive processes dying, and whose size is bounded by available disk rather than memory.
+This library implements a disk-backed task queue, allowing for queues that can survive processes dying, and whose size is bounded by available disk rather than memory.  It is a small, purely-Clojure implementation focused entirely on the in-process use case, meaning that it is both simpler and more easily embedded than network-aware queue implementations such as Kafka and ActiveMQ.
 
 ### usage
 
@@ -77,7 +77,7 @@ A complete list of options is as follows:
 | name | description |
 |------|-------------|
 | `:complete?` | a predicate for identifying already completed tasks, defaults to always returning false |
-| `:max-queue-size` | the maximum number of elements that can be in the queue before `put!` blocks, defaults to `Integer/MAX_VALUE` |
+| `:max-queue-size` | the maximum number of elements that can be in the queue before `put!` blocks, defaults to `Integer/MAX_VALUE`	 |
 | `:slab-size` | The size, in bytes, of the backing files for the queue.  Defaults to 16mb. |
 | `:fsync-put?` | Whether an fsync should be performed for each `put!`.  Defaults to true. |
 | `:fsync-take?` | Whether an fsync should be performed for each `take!`.  Defaults to false. |

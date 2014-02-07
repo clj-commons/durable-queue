@@ -131,41 +131,42 @@
   ([slab]
      (slab->task-seq slab 0))
   ([slab pos]
-     (lazy-seq
-       (try
-         (let [^ByteBuffer
-               buf' (-> (buffer slab)
-                      .duplicate
-                      (.position pos))]
-           
-           ;; is there a next task, and is there space left in the buffer?
-           (when (and
-                   (pos? (.remaining buf'))
-                   (== 1 (.get buf')))
-             
-             (let [status (.get buf')
-                   checksum (.getLong buf')
-                   size (.getInt buf')]
-               (cons
-                 
-                 (vary-meta
-                   (task
-                     #(-> (buffer slab)
+     (seq
+       (lazy-seq
+         (try
+           (let [^ByteBuffer
+                 buf' (-> (buffer slab)
                         .duplicate
-                        (.position pos)
-                        ^ByteBuffer
-                        (.limit (+ pos header-size size))
-                        .slice)
-                     (read-write-lock slab))
-                   assoc ::slab slab)
-                 
-                 (slab->task-seq
-                   slab
-                   (+ pos header-size size))))))
-         (catch Throwable e
-           ;; this implies unrecoverable corruption
-           nil
-           )))))
+                        (.position pos))]
+             
+             ;; is there a next task, and is there space left in the buffer?
+             (when (and
+                     (pos? (.remaining buf'))
+                     (== 1 (.get buf')))
+               
+               (let [status (.get buf')
+                     checksum (.getLong buf')
+                     size (.getInt buf')]
+                 (cons
+                   
+                   (vary-meta
+                     (task
+                       #(-> (buffer slab)
+                          .duplicate
+                          (.position pos)
+                          ^ByteBuffer
+                          (.limit (+ pos header-size size))
+                          .slice)
+                       (read-write-lock slab))
+                     assoc ::slab slab)
+                   
+                   (slab->task-seq
+                     slab
+                     (+ pos header-size size))))))
+           (catch Throwable e
+             ;; this implies unrecoverable corruption
+             nil
+             ))))))
 
 (deftype TaskSlab
   [filename
