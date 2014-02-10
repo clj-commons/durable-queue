@@ -553,6 +553,7 @@
              (while (.get ref)
                (when-let [q (.get ref)]
                  (try
+                   (Thread/sleep fsync-interval)
                    (fsync q)
                    (catch Throwable e
                      )))))))
