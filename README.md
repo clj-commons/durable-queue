@@ -78,11 +78,15 @@ A complete list of options is as follows:
 |------|-------------|
 | `:complete?` | a predicate for identifying already completed tasks, defaults to always returning false |
 | `:max-queue-size` | the maximum number of elements that can be in the queue before `put!` blocks, defaults to `Integer/MAX_VALUE`	 |
-| `:slab-size` | The size, in bytes, of the backing files for the queue.  Defaults to 16mb. |
-| `:fsync-put?` | Whether an fsync should be performed for each `put!`.  Defaults to true. |
-| `:fsync-take?` | Whether an fsync should be performed for each `take!`.  Defaults to false. |
+| `:slab-size` | The size, in bytes, of the backing files for the queue.  The size of a serialized task cannot be larger than this size, defaults to 64mb. |
+| `:fsync-put?` | Whether an fsync should be performed for each `put!`.  Defaults to `true`. |
+| `:fsync-take?` | Whether an fsync should be performed for each `take!`.  Defaults to `false`. |
+| `:fsync-threshold` | The maximum number of writes (puts, takes, retries, completes) that can be performed before an fsync is performed. |
+| `:fsync-interval` | The maximum amount of time, in milliseconds, that can elapse before an fsync is performed. |
 
-Disabling `:fsync-put?` will risk losing tasks if a process dies.  Disabling `:fsync-take?` increases the chance of a task being re-run when a proces dies.  Disabling both will increase throughput of the queue by at least an order of magnitude (in the default configuration, ~1.5k tasks/sec on rotating disks and ~6k tasks/sec on SSD, with fsync completely disabled ~100k tasks/sec independent of hardware).  Tradeoffs between these two can be made by batching tasks.
+Disabling `:fsync-put?` will risk losing tasks if a process dies.  Disabling `:fsync-take?` increases the chance of a task being re-run when a proces dies.  Disabling both will increase throughput of the queue by at least an order of magnitude (in the default configuration, ~1.5k tasks/sec on rotating disks and ~6k tasks/sec on SSD, with fsync completely disabled ~100k tasks/sec independent of hardware).
+
+Writes can be batched using `fsync-treshold` and/or `fsync-interval`, or by explicitly calling `(durable-queue/fsync q)`.  Setting the `fsync-threshold` to 10 will allow for ~25k tasks/sec on SSD, and still enforces a small upper boundary on how much data can be loss when the process dies.  An exception will be thrown if both per-task and batch sync options are set.
 
 ### license
 

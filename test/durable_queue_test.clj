@@ -6,7 +6,7 @@
     [criterium.core :as c]))
 
 (defn clear-tmp-directory []
-  (doseq [f (->> (#'durable-queue/directory->queue->slab-files "/tmp")
+  (doseq [f (->> (#'durable-queue/directory->queue-name->slab-files "/tmp")
               vals
               (apply concat))]
     (.delete (io/file f))))
@@ -76,6 +76,27 @@
 
   (println "\n\n-- sync put")
   (let [q (queues "/tmp" {:fsync-put? true, :fsync-take? false})]
+    (c/quick-bench
+      (do
+        (put! q :foo 1)
+        (complete! (take! q :foo)))))
+
+  (println "\n\n-- sync every 10 writes")
+  (let [q (queues "/tmp" {:fsync-put? false, :fsync-threshold 10})]
+    (c/quick-bench
+      (do
+        (put! q :foo 1)
+        (complete! (take! q :foo)))))
+
+  (println "\n\n-- sync every 100 writes")
+  (let [q (queues "/tmp" {:fsync-put? false, :fsync-threshold 100})]
+    (c/quick-bench
+      (do
+        (put! q :foo 1)
+        (complete! (take! q :foo)))))
+
+  (println "\n\n-- sync every 100ms")
+  (let [q (queues "/tmp" {:fsync-put? false, :fsync-interval 100})]
     (c/quick-bench
       (do
         (put! q :foo 1)

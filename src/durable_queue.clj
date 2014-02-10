@@ -7,7 +7,8 @@
     [taoensso.nippy :as nippy])
   (:import
     [java.lang.reflect
-     Method]
+     Method
+     Field]
     [java.util.concurrent
      LinkedBlockingQueue
      TimeoutException
@@ -28,7 +29,9 @@
      FileChannel$MapMode]
     [java.nio
      ByteBuffer
-     MappedByteBuffer]))
+     MappedByteBuffer]
+    [java.lang.ref
+     WeakReference]))
 
 ;;;
 
@@ -69,16 +72,93 @@
   (^:private status [_] "Returns the task status")
   (^:private status! [_ status] "Sets the task status"))
 
+(defprotocol ITaskSlab
+  (^:private unmap [_] "Temporarily releases mapped byte buffer until it's needed again.")
+  (^:private mapped? [_] "Returns true if the slab is actively mapped into memory.")
+  (^:private sync! [_])
+  (^:private invalidate [_ offset len])
+  (^:private ^ByteBuffer buffer [_])
+  (^:private append-to-slab! [_ descriptor])
+  (^:private read-write-lock [_]))
+
+;;;
+
+(defn create-buffer [filename size]
+  (let [raf (doto (RandomAccessFile. (io/file filename) "rw")
+              (.setLength size))]
+    (try
+      (let [fc (.getChannel raf)]
+        (try
+          (let [buf (.map fc FileChannel$MapMode/READ_WRITE 0 size)]
+            (doto buf
+              (.put 0 (byte 0))
+              .force))
+          (finally
+            (.close fc))))
+      (finally
+        (.close raf)))))
+
+(defn load-buffer
+  ([filename]
+     (load-buffer filename nil nil))
+  ([filename offset length]
+     (let [_ (assert (.exists (io/file filename)))
+           raf (RandomAccessFile. (io/file filename) "rw")]
+       (try
+         (let [fc (.getChannel raf)]
+           (try
+             (.map fc
+               FileChannel$MapMode/READ_WRITE
+               (or offset 0)
+               (or length (.length raf)))
+             (finally
+               (.close fc))))
+         (finally
+           (.close raf))))))
+
+(let [clean (delay
+              (doto (.getMethod
+                      (Class/forName "sun.misc.Cleaner")
+                      "clean"
+                      nil)
+                (.setAccessible true)))]
+  (defn- unmap-buffer
+    "A delightful endrun on the JVM's mmap GC mechanism"
+    [^ByteBuffer buf]
+    (when (.isDirect buf)
+      (try
+        
+        (let [^Method clean @clean
+              cleaner (doto (.getMethod (class buf) "cleaner" nil)
+                        (.setAccessible true))]
+          (.invoke clean
+            (.invoke cleaner buf nil)
+            nil))
+        (catch Throwable e
+          ;; not much we can do here, sadly
+          )))))
+
+(defn- force-buffer
+  [^MappedByteBuffer buf offset length]
+  (.force buf))
+
+;;;
+
 ;; a single task within a slab, assumes that the buffer is sliced around
 ;; the task's boundaries
-(defrecord Task [buf-fn status deserializer]
+(defrecord Task
+  [slab
+   ^long offset
+   ^long length
+   status
+   deserializer]
   clojure.lang.IDeref
   (deref [_]
     (deserializer))
   ITask
   (status [_]
     (or @status
-      (let [s (case (.get ^ByteBuffer (buf-fn) 1)
+      (let [s (case (.get ^ByteBuffer (buffer slab) (p/+ offset 1))
                 0 :incomplete
                 1 :in-progress
                 2 :complete)]
@@ -86,24 +166,30 @@
         s)))
   (status! [_ s]
     (reset! status s)
-    (.put ^ByteBuffer (buf-fn) 1
+    (.put ^ByteBuffer (buffer slab) (p/+ offset 1)
       (case s
         :incomplete 0
         :in-progress 1
         :complete 2))
+    (invalidate slab (p/+ offset 1) 1)
     nil))
 
-(defn- task [buf-fn lock]
-  (with-lock lock
-    (Task.
-      buf-fn
-      (atom nil)
-      (fn []
-        (let [^ByteBuffer buf (buf-fn)
+(defn- task [slab offset len lock]
+  (Task.
+    slab
+    offset
+    len
+    (atom nil)
+    (fn []
+      (with-lock lock
+        (let [^ByteBuffer buf (-> (buffer slab)
+                                (.position offset)
+                                ^ByteBuffer
+                                (.limit (+ offset len))
+                                .slice)
               checksum' (.getLong buf 2)
               ary (bs/to-byte-array (.position buf header-size))]
           (when-not (== (checksum (.getInt buf 10) ary) checksum')
-            (prn (.get buf 0) (.get buf 1) (.getLong buf 2) (.getInt buf 10))
             (throw (IOException. "checksum mismatch")))
           (nippy/thaw-from-bytes ary))))))
 
@@ -112,13 +198,6 @@
     (str "< " (status t) " | " (pr-str @t) " >")))
 
 ;;;
-
-(defprotocol ITaskSlab
-  (^:private unmap [_] "Temporarily releases mapped byte buffer until it's needed again.")
-  (^:private mapped? [_] "Returns true if the slab is actively mapped into memory.")
-  (^:private ^ByteBuffer buffer [_])
-  (^:private append-to-slab! [_ descriptor])
-  (^:private read-write-lock [_]))
 
 ;; the byte layout is
 ;; [ exists?  : int8
@@ -136,7 +215,6 @@
      (try
        (let [^ByteBuffer
              buf' (-> (buffer slab)
-                    .duplicate
                     (.position pos))]
          
          ;; is there a next task, and is there space left in the buffer?
@@ -150,16 +228,11 @@
                    size (.getInt buf')]
                (cons
                  
-                 (vary-meta
-                   (task
-                     #(-> (buffer slab)
-                        .duplicate
-                        (.position pos)
-                        ^ByteBuffer
-                        (.limit (+ pos header-size size))
-                        .slice)
-                     (read-write-lock slab))
-                   assoc ::slab slab)
+                 (task
+                   slab
+                   pos
+                   (+ header-size size)
+                   (read-write-lock slab))
                  
                  (slab->task-seq
                    slab
@@ -169,53 +242,27 @@
          nil
          ))))
 
-(let [clean (delay
-                (doto (.getMethod
-                        (Class/forName "sun.misc.Cleaner")
-                        "clean"
-                        nil)
-                  (.setAccessible true)))]
-  (defn- unmap-buffer
-    "A delightful endrun on the JVM's mmap GC mechanism"
-    [^ByteBuffer buf]
-    (when (.isDirect buf)
-      (try
-        
-        (let [^Method clean @clean
-              cleaner (doto (.getMethod (class buf) "cleaner" nil)
-                      (.setAccessible true))]
-          (.invoke ^Method clean
-            (.invoke cleaner buf nil)
-            nil))
-        (catch Throwable e
-          ;; not much we can do here, sadly
-          )))))
-
 (deftype TaskSlab
   [filename
+   q-name
+   queue
    buf        ;; a clearable atom holding the buffer
    position   ;; an atom storing the write position of the slab
-   lock]
+   lock
+   dirty      ;; an atom containing an interval of dirty bytes
+   ]
   ITaskSlab
 
   (read-write-lock [_]
     lock)
 
-  (buffer [_]
-    (or @buf
-      (swap! buf
-        (fn [buf]
-          (or buf
-            (let [_ (assert (.exists (io/file filename)))
-                  raf (RandomAccessFile. (io/file filename) "rw")]
-              (try
-                (let [fc (.getChannel raf)]
-                  (try
-                    (.map fc FileChannel$MapMode/READ_WRITE 0 (.length raf))
-                    (finally
-                      (.close fc))))
-                (finally
-                  (.close raf)))))))))
+  (buffer [this]
+    (let [buf
+          (or @buf
+            (swap! buf
+              (fn [buf]
+                (or buf (load-buffer filename)))))]
+      (.duplicate ^ByteBuffer buf)))
 
   (mapped? [_]
     (boolean @buf))
@@ -227,6 +274,20 @@
           (unmap-buffer buf))
         (reset! buf nil))))
 
+  (invalidate [_ start' len]
+    (let [end' (+ start' len)]
+      (swap! dirty
+        (fn [[start end]]
+          [(min start start') (max end end')]))))
+
+  (sync! [_]
+    (let [[start end] @dirty]
+      (when (< start end)
+        (when-let [^MappedByteBuffer buf @buf]
+          (force-buffer buf start (- end start))
+          (compare-and-set! dirty [start end] [Integer/MAX_VALUE 0])
+          nil))))
+
   (append-to-slab! [this descriptor]
     (locking this
       (let [ary (nippy/freeze descriptor)
@@ -235,7 +296,6 @@
 
             ^ByteBuffer
             buf (-> (buffer this)
-                  .duplicate
                   (.position pos))]
 
         (when (> (.remaining buf) (+ (count ary) header-size))
@@ -250,18 +310,15 @@
             (.put (byte 0))) ;; next doesn't exist
               
           (swap! position + header-size cnt)
+
+          (invalidate this pos (+ header-size cnt))
             
           ;; return a task to enqueue in-memory
-          (with-meta
-            (task
-              #(-> (buffer this)
-                 .duplicate
-                 (.position pos)
-                 ^ByteBuffer
-                 (.limit (+ pos header-size cnt))
-                 .slice)
-              lock)
-            {::slab this})))))
+          (task
+            this
+            pos
+            (+ header-size cnt)
+            lock)))))
   
   clojure.lang.Seqable
   (seq [this]
@@ -280,15 +337,10 @@
     (unmap slab)
     (.delete (io/file (.filename slab)))))
 
-(defn- sync-slab
-  [^TaskSlab slab]
-  (when (.exists (io/file (.filename slab)))
-    (.force ^MappedByteBuffer (buffer slab))))
-
 (defn- create-slab
   "Creates a new slab file, ensuring a new file name that is lexicographically greater than
    any existing files for that queue name."
-  ([directory q-name size]
+  ([directory q-name queue size]
      (locking fs-monitor
        (let [pattern (re-pattern (str "^" q-name "_(\\d+)"))
              last-number (->> directory
@@ -305,39 +357,36 @@
 
          (when-not (.createNewFile f)
            (throw (IOException. (str "Could not create new slab file at " (.getAbsolutePath f)))))
-
-         (let [raf (doto (RandomAccessFile. f "rw")
-                     (.setLength size))]
-           (try
-             (let [fc (.getChannel raf)]
-               (try
-                 (let [buf (.map fc FileChannel$MapMode/READ_WRITE 0 size)]
-                   (doto buf
-                     (.put 0 (byte 0))
-                     .force)
-                   (TaskSlab. (.getAbsolutePath f) (atom buf) (atom 0) (ReentrantReadWriteLock.)))
-                 (finally
-                   (.close fc))))
-             (finally
-               (.close raf)))
-
-)))))
+         
+         (TaskSlab.
+           (.getAbsolutePath f)
+           q-name
+           queue
+           (atom (create-buffer f size))
+           (atom 0)
+           (ReentrantReadWriteLock.)
+           (atom [Integer/MAX_VALUE 0]))))))
 
 (defn- file->slab
   "Transforms a file into a slab representing that file's contents."
-  [filename]
+  [filename q-name queue]
   (let [pos (atom 0)
-        slab (TaskSlab. filename (atom nil) pos (ReentrantReadWriteLock.))
+        slab (TaskSlab.
+               filename
+               q-name
+               queue
+               (atom nil)
+               pos
+               (ReentrantReadWriteLock.)
+               (atom [Integer/MAX_VALUE 0]))
         len (->> slab
-              seq
-              (map #((:buf-fn %)))
-              (map #(.remaining ^ByteBuffer %))
+              (map :length)
               (reduce +))]
     (reset! pos len)
     (unmap slab)
     slab))
 
-(defn- directory->queue->slab-files
+(defn- directory->queue-name->slab-files
   "Returns a map of queue names onto slab files for that queue."
   [directory]
   (let [queue->file (->> directory
@@ -377,6 +426,8 @@
   (^:private mark-retry! [_ q-name])
   (stats [_]
     "Returns a map of queue names onto information about the immediate state of the queue.")
+  (fsync [_]
+    "Forces an fsync on all modified files.")
   (take!
     [_ q-name]
     [_ q-name timeout timeout-val]
@@ -412,40 +463,58 @@
             complete?
             slab-size
             fsync-put?
-            fsync-take?]
+            fsync-take?
+            fsync-threshold
+            fsync-interval]
      :or {max-queue-size Integer/MAX_VALUE
           complete? nil
           slab-size (* 64 1024 1024)
           fsync-put? true
           fsync-take? false}}]
 
+     (assert
+       (not
+         (and
+           (or fsync-threshold fsync-interval)
+           (or fsync-take? fsync-put?)))
+       "Both batch and per-task fsync options are enabled, which is probably not what you intended.")
+     
      (.mkdirs (io/file directory))
 
-     (let [queue (memoize (fn [_] (LinkedBlockingQueue. (int max-queue-size))))
-           queue->files (directory->queue->slab-files directory)
-           queue->slabs (atom
-                          (zipmap
-                            (keys queue->files)
-                            (->> queue->files
-                              vals
-                              (map #(map file->slab %))
-                              vec)))
-           queue->stats (atom
-                          (zipmap
-                            (keys queue->files)
-                            (map
-                              #(initial-stats (count (queue %)))
-                              (keys queue->files))))
-           slabs (->> @queue->slabs vals (apply concat))
+     (let [
+           
+           queue (memoize (fn [_] (LinkedBlockingQueue. (int max-queue-size))))
+           queue-name->files (directory->queue-name->slab-files directory)
+
+           ;; core state stores
+           queue-name->slabs (atom
+                               (zipmap
+                                 (keys queue-name->files)
+                                 (->> queue-name->files
+                                   (map
+                                     (fn [[queue-name files]]
+                                       (map #(file->slab % queue-name (queue queue-name)) files)))
+                                   vec)))
+
+           queue-name->stats (atom
+                               (zipmap
+                                 (keys queue-name->files)
+                                 (map
+                                   #(initial-stats (count (queue %)))
+                                   (keys queue-name->files))))
+
+           queue-name->current-slab (atom {})
+
+           ;; initialize 
+           slabs (->> @queue-name->slabs vals (apply concat))
            slab->count (zipmap
                          slabs
                          (map #(atom (count (seq %))) slabs))
            create-new-slab (fn [q-name]
-                             (let [slab (create-slab directory q-name slab-size)
-                                   empty-slabs (->> (@queue->slabs q-name)
+                             (let [slab (create-slab directory q-name (queue q-name) slab-size)
+                                   empty-slabs (->> (@queue-name->slabs q-name)
                                                  (filter (fn [slab]
                                                            (->> slab
-                                                             seq
                                                              (remove #(= :complete (status %)))
                                                              empty?)))
                                                  set)]
@@ -455,26 +524,45 @@
                                  (delete-slab s))
 
                                ;; update list of active slabs
-                               (swap! queue->slabs update-in [q-name]
+                               (swap! queue-name->slabs update-in [q-name]
                                  #(conj (vec (remove empty-slabs %)) slab))
 
                                ;; unmap all slabs but the first (which is being consumed)
                                ;; and the last (which is being written to)
-                               (doseq [s (-> (@queue->slabs q-name) rest butlast)]
+                               (doseq [s (-> (@queue-name->slabs q-name) rest butlast)]
                                  (unmap s))
                                slab))
-           populate-stats #(if-not (contains? @queue->stats %)
-                             (swap! queue->stats assoc % (initial-stats 0)))
-           this-ref (promise)
-           current-slab (atom nil)]
 
+           populate-stats! #(when-not (contains? @queue-name->stats %)
+                              (swap! queue-name->stats assoc % (initial-stats 0)))
+
+           this-ref (promise)
+
+           action-counter (AtomicLong. 0)
+           
+           mark-action! (if fsync-threshold
+                          (fn []
+                            (when (zero? (rem (.incrementAndGet action-counter) fsync-threshold))
+                              (fsync @this-ref)))
+                          (fn []))]
+
+       ;; 
+       (when fsync-interval
+         (future
+           (let [ref (WeakReference. @this-ref)]
+             (while (.get ref)
+               (when-let [q (.get ref)]
+                 (try
+                   (fsync q)
+                   (catch Throwable e
+                     )))))))
+       
        ;; populate queues with pre-existing tasks
        (let [empty-slabs (atom #{})]
-         (doseq [[q slabs] @queue->slabs]
+         (doseq [[q slabs] @queue-name->slabs]
            (let [^LinkedBlockingQueue q' (queue q)]
              (doseq [slab slabs]
                (let [tasks (->> slab
-                             seq
                              (map #(vary-meta % assoc
                                      ::this this-ref
                                      ::queue q'
@@ -499,10 +587,10 @@
                              "'max-queue-size' insufficient to hold existing tasks."))))
                      (unmap slab)))))
 
-             (let [^AtomicLong counter (get-in @queue->stats [q :enqueued])]
+             (let [^AtomicLong counter (get-in @queue-name->stats [q :enqueued])]
                (.addAndGet counter (count (queue q))))))
 
-         (swap! queue->slabs
+         (swap! queue-name->slabs
            (fn [m]
              (->> m
                (map
@@ -515,32 +603,38 @@
 
            java.io.Closeable
            (close [_]
-             (doseq [s (->> @queue->slabs vals (apply concat))]
+             (doseq [s (->> @queue-name->slabs vals (apply concat))]
                (unmap s)))
 
            IQueues
+
+           (fsync [_]
+             (doseq [slab (->> @queue-name->slabs vals (apply concat))]
+               (sync! slab)))
            
            (mark-retry! [_ q-name]
-             (populate-stats q-name)
-             (let [^AtomicLong retry-counter (get-in @queue->stats [q-name :retried])]
+             (mark-action!)
+             (populate-stats! q-name)
+             (let [^AtomicLong retry-counter (get-in @queue-name->stats [q-name :retried])]
                (.incrementAndGet retry-counter)))
            
            (mark-complete! [_ q-name]
-             (populate-stats q-name)
-             (let [^AtomicLong retry-counter (get-in @queue->stats [q-name :completed])]
+             (mark-action!)
+             (populate-stats! q-name)
+             (let [^AtomicLong retry-counter (get-in @queue-name->stats [q-name :completed])]
                (.incrementAndGet retry-counter)))
            
           (stats [_]
-            (let [ks (keys @queue->stats)]
+            (let [ks (keys @queue-name->stats)]
               (zipmap ks
                 (map
                   (fn [q-name]
                     (merge
-                      {:num-slabs (-> @queue->slabs (get q-name) count)
-                       :num-active-slabs (->> (get @queue->slabs q-name)
+                      {:num-slabs (-> @queue-name->slabs (get q-name) count)
+                       :num-active-slabs (->> (get @queue-name->slabs q-name)
                                            (filter mapped?)
                                            count)}
-                      (immediate-stats (queue q-name) (get @queue->stats q-name))))
+                      (immediate-stats (queue q-name) (get @queue-name->stats q-name))))
                   ks))))
 
           (take! [this q-name timeout timeout-val]
@@ -551,19 +645,17 @@
                              (.poll q)
                              (.poll q timeout TimeUnit/MILLISECONDS))]
 
-                  (let [slab (-> t meta ::slab)]
+                  (let [slab (:slab t)]
 
                     ;; if we've moved onto a new slab, unmap all but the current and
                     ;; last slabs
-                    (let [old-slab @current-slab]
+                    (let [old-slab (@queue-name->current-slab q-name)]
                       (when-not (= slab old-slab)
-                        (loop [old-slab old-slab]
-                          (if (compare-and-set! current-slab old-slab slab)
-                            (doseq [s (->> (get @queue->slabs q-name)
-                                        butlast
-                                        (remove #(= slab %)))]
-                              (unmap s))
-                            (recur @current-slab)))))
+                        (swap! queue-name->current-slab assoc q-name slab)
+                        (doseq [s (->> (get @queue-name->slabs q-name)
+                                    butlast
+                                    (remove #(= slab %)))]
+                          (unmap s))))
                     
                     (status! t :in-progress)
                     ;; we don't need to fsync here, because in-progress and incomplete
@@ -581,7 +673,7 @@
             (let [q-name (munge (name q-name))
                   ^LinkedBlockingQueue q (queue q-name)
                   slab! (fn []
-                          (let [slabs (@queue->slabs q-name)
+                          (let [slabs (@queue-name->slabs q-name)
                                 slab  (last slabs)
                                 task  (when slab
                                         (append-to-slab! slab task-descriptor))
@@ -599,7 +691,7 @@
                                   (str "Can't enqueue task whose serialized representation is larger than :slab-size, which is currently " slab-size))))
                            
                             (when fsync-put?
-                              (sync-slab slab))
+                              (sync! slab))
                             task))
                  
                   queue! (fn [task]
@@ -614,8 +706,8 @@
                                  ::queue q
                                  ::fsync? fsync-take?)))]
                 (do
-                  (populate-stats q-name)
-                  (let [^AtomicLong counter (get-in @queue->stats [q-name :enqueued])]
+                  (populate-stats! q-name)
+                  (let [^AtomicLong counter (get-in @queue-name->stats [q-name :enqueued])]
                     (.incrementAndGet counter))
                   true)
                 false)
@@ -668,7 +760,7 @@
   [task]
   (status! task :complete)
   (when (-> task meta ::fsync?)
-    (sync-slab (-> task meta ::slab)))
+    (sync! (:slab task)))
   (mark-complete! @(-> task meta ::this) (-> task meta ::queue-name))
   true)
 
@@ -677,7 +769,7 @@
   [task]
   (status! task :incomplete)
   (when (-> task meta ::fsync?)
-    (sync-slab (-> task meta ::slab)))
+    (sync! (:slab task)))
   (mark-retry! @(-> task meta ::this) (-> task meta ::queue-name))
   (let [^LinkedBlockingQueue q (-> task meta ::queue)]
     (.offer q
