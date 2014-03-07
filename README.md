@@ -5,7 +5,7 @@ This library implements a disk-backed task queue, allowing for queues that can s
 ### usage
 
 ```clj
-[factual/durable-queue "0.1.0"]
+[factual/durable-queue "0.1.1"]
 ```
 
 To interact with queues, first create a `queues` object by specifying a directory in the filesystem and an options map:
@@ -86,7 +86,7 @@ A complete list of options is as follows:
 
 Disabling `:fsync-put?` will risk losing tasks if a process dies.  Disabling `:fsync-take?` increases the chance of a task being re-run when a proces dies.  Disabling both will increase throughput of the queue by at least an order of magnitude (in the default configuration, ~1.5k tasks/sec on rotating disks and ~6k tasks/sec on SSD, with fsync completely disabled ~100k tasks/sec independent of hardware).
 
-Writes can be batched using `fsync-treshold` and/or `fsync-interval`, or by explicitly calling `(durable-queue/fsync q)`.  Setting the `fsync-threshold` to 10 will allow for ~25k tasks/sec on SSD, and still enforces a small upper boundary on how much data can be loss when the process dies.  An exception will be thrown if both per-task and batch sync options are set.
+Writes can be batched using `fsync-treshold` and/or `fsync-interval`, or by explicitly calling `(durable-queue/fsync q)`.  Setting the `fsync-threshold` to 10 will allow for ~25k tasks/sec on SSD, and still enforces a small upper boundary on how much data can be lost when the process dies.  An exception will be thrown if both per-task and batch sync options are set.
 
 ### license
 
