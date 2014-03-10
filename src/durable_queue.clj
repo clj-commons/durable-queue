@@ -127,7 +127,7 @@
     [^ByteBuffer buf]
     (when (.isDirect buf)
       (try
-        
+
         (let [^Method clean @clean
               cleaner (doto (.getMethod (class buf) "cleaner" nil)
                         (.setAccessible true))]
@@ -203,7 +203,7 @@
 ;; [ exists?  : int8
 ;;   state    : int8
 ;;   checksum : int64
-;;   size     : int32 
+;;   size     : int32
 ;;   payload  : array ]
 ;; valid values for 'exists' is 0 (no), 1 (yes)
 ;; valid values for 'state' is 0 (unclaimed), 1 (in progress), 2 (complete)
@@ -216,24 +216,24 @@
        (let [^ByteBuffer
              buf' (-> (buffer slab)
                     (.position pos))]
-         
+
          ;; is there a next task, and is there space left in the buffer?
          (when (and
                  (pos? (.remaining buf'))
                  (== 1 (.get buf')))
-           
+
            (lazy-seq
              (let [status (.get buf')
                    checksum (.getLong buf')
                    size (.getInt buf')]
                (cons
-                 
+
                  (task
                    slab
                    pos
                    (+ header-size size)
                    (read-write-lock slab))
-                 
+
                  (slab->task-seq
                    slab
                    (+ pos header-size size)))))))
@@ -266,7 +266,7 @@
 
   (mapped? [_]
     (boolean @buf))
-  
+
   (unmap [_]
     (with-exclusive-lock lock
       (when (.exists (io/file filename))
@@ -308,18 +308,18 @@
             (.putInt cnt)
             (.put ary)
             (.put (byte 0))) ;; next doesn't exist
-              
+
           (swap! position + header-size cnt)
 
           (invalidate this pos (+ header-size cnt))
-            
+
           ;; return a task to enqueue in-memory
           (task
             this
             pos
             (+ header-size cnt)
             lock)))))
-  
+
   clojure.lang.Seqable
   (seq [this]
     (slab->task-seq this))
@@ -357,7 +357,7 @@
 
          (when-not (.createNewFile f)
            (throw (IOException. (str "Could not create new slab file at " (.getAbsolutePath f)))))
-         
+
          (TaskSlab.
            (.getAbsolutePath f)
            q-name
@@ -413,8 +413,8 @@
 (defn- immediate-stats [^LinkedBlockingQueue q {:keys [enqueued retried completed]}]
   (let [cnt (.size q)
         completed (.get ^AtomicLong completed)
-        enqueued (.get ^AtomicLong enqueued)] 
-    {:enqueued enqueued 
+        enqueued (.get ^AtomicLong enqueued)]
+    {:enqueued enqueued
      :retried (.get ^AtomicLong retried)
      :completed completed
      :in-progress (- (- enqueued completed) cnt)}))
@@ -478,11 +478,11 @@
            (or fsync-threshold fsync-interval)
            (or fsync-take? fsync-put?)))
        "Both batch and per-task fsync options are enabled, which is probably not what you intended.")
-     
+
      (.mkdirs (io/file directory))
 
      (let [
-           
+
            queue (memoize (fn [_] (LinkedBlockingQueue. (int max-queue-size))))
            queue-name->files (directory->queue-name->slab-files directory)
 
@@ -505,7 +505,7 @@
 
            queue-name->current-slab (atom {})
 
-           ;; initialize 
+           ;; initialize
            slabs (->> @queue-name->slabs vals (apply concat))
            slab->count (zipmap
                          slabs
@@ -539,25 +539,27 @@
            this-ref (promise)
 
            action-counter (AtomicLong. 0)
-           
+
            mark-action! (if fsync-threshold
                           (fn []
                             (when (zero? (rem (.incrementAndGet action-counter) fsync-threshold))
                               (fsync @this-ref)))
                           (fn []))]
 
-       ;; 
+       ;;
        (when fsync-interval
          (future
            (let [ref (WeakReference. @this-ref)]
              (while (.get ref)
                (when-let [q (.get ref)]
                  (try
-                   (Thread/sleep fsync-interval)
-                   (fsync q)
+                   (let [start (System/currentTimeMillis)]
+                     (fsync q)
+                     (let [end (System/currentTimeMillis)]
+                       (Thread/sleep (max 0 (- fsync-interval (- end start))))))
                    (catch Throwable e
                      )))))))
-       
+
        ;; populate queues with pre-existing tasks
        (let [empty-slabs (atom #{})]
          (doseq [[q slabs] @queue-name->slabs]
@@ -571,14 +573,14 @@
                                      ::fsync? fsync-take?))
                              (remove #(or (= :complete (status %))
                                         (and complete? (complete? @%)))))]
-                 
+
                  (if (empty? tasks)
-                   
+
                    ;; if there aren't any active tasks, just delete the slab
                    (do
                      (delete-slab slab)
                      (swap! empty-slabs conj slab))
-                   
+
                    (do
                      (doseq [task tasks]
                        (status! task :incomplete)
@@ -612,19 +614,19 @@
            (fsync [_]
              (doseq [slab (->> @queue-name->slabs vals (apply concat))]
                (sync! slab)))
-           
+
            (mark-retry! [_ q-name]
              (mark-action!)
              (populate-stats! q-name)
              (let [^AtomicLong retry-counter (get-in @queue-name->stats [q-name :retried])]
                (.incrementAndGet retry-counter)))
-           
+
            (mark-complete! [_ q-name]
              (mark-action!)
              (populate-stats! q-name)
              (let [^AtomicLong retry-counter (get-in @queue-name->stats [q-name :completed])]
                (.incrementAndGet retry-counter)))
-           
+
           (stats [_]
             (let [ks (keys @queue-name->stats)]
               (zipmap ks
@@ -657,7 +659,7 @@
                                     butlast
                                     (remove #(= slab %)))]
                           (unmap s))))
-                    
+
                     (status! t :in-progress)
                     ;; we don't need to fsync here, because in-progress and incomplete
                     ;; are effectively equivalent on restart
@@ -666,7 +668,7 @@
                   timeout-val)
                 (catch TimeoutException _
                   timeout-val))))
-         
+
           (take! [this q-name]
             (take! this q-name Long/MAX_VALUE nil))
 
@@ -690,11 +692,11 @@
                               (throw
                                 (IllegalArgumentException.
                                   (str "Can't enqueue task whose serialized representation is larger than :slab-size, which is currently " slab-size))))
-                           
+
                             (when fsync-put?
                               (sync! slab))
                             task))
-                 
+
                   queue! (fn [task]
                            (if (zero? timeout)
                              (.offer q task)
@@ -714,7 +716,7 @@
                 false)
 
               nil))
-         
+
           (put! [this q-name task-descriptor]
             (put! this q-name task-descriptor Long/MAX_VALUE))))
 
