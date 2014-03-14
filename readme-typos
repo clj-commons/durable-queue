@@ -32,7 +32,7 @@ true
 
 Notice that the task has a value describing its progress, and a value describing the task itself.  We can get the task descriptor by dereferencing the returned task.  Note that since the task is persisted to disk and anything on disk may be corrupted, this involves a checksum which may fail and throw an `IOException`.  Any software which wants to be robust to all failure modes should always dereference within a `try`/`catch` clause.
 
-Caliing `take!` removed the task from the queue, but just because we've taken the task doesn't mean we've completed the action associated with it.  In order to make sure the task isn't retried on restart, we must mark it as `complete!`.
+Calling `take!` removed the task from the queue, but just because we've taken the task doesn't mean we've completed the action associated with it.  In order to make sure the task isn't retried on restart, we must mark it as `complete!`.
 
 ```clj
 > (put! q :foo "another task")
@@ -84,9 +84,9 @@ A complete list of options is as follows:
 | `:fsync-threshold` | The maximum number of writes (puts, takes, retries, completes) that can be performed before an fsync is performed. |
 | `:fsync-interval` | The maximum amount of time, in milliseconds, that can elapse before an fsync is performed. |
 
-Disabling `:fsync-put?` will risk losing tasks if a process dies.  Disabling `:fsync-take?` increases the chance of a task being re-run when a proces dies.  Disabling both will increase throughput of the queue by at least an order of magnitude (in the default configuration, ~1.5k tasks/sec on rotating disks and ~6k tasks/sec on SSD, with fsync completely disabled ~100k tasks/sec independent of hardware).
+Disabling `:fsync-put?` will risk losing tasks if a process dies.  Disabling `:fsync-take?` increases the chance of a task being re-run when a process dies.  Disabling both will increase throughput of the queue by at least an order of magnitude (in the default configuration, ~1.5k tasks/sec on rotating disks and ~6k tasks/sec on SSD, with fsync completely disabled ~100k tasks/sec independent of hardware).
 
-Writes can be batched using `fsync-treshold` and/or `fsync-interval`, or by explicitly calling `(durable-queue/fsync q)`.  Setting the `fsync-threshold` to 10 will allow for ~25k tasks/sec on SSD, and still enforces a small upper boundary on how much data can be lost when the process dies.  An exception will be thrown if both per-task and batch sync options are set.
+Writes can be batched using `fsync-threshold` and/or `fsync-interval`, or by explicitly calling `(durable-queue/fsync q)`.  Setting the `fsync-threshold` to 10 will allow for ~25k tasks/sec on SSD, and still enforces a small upper boundary on how much data can be lost when the process dies.  An exception will be thrown if both per-task and batch sync options are set.
 
 ### license
 
