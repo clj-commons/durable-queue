@@ -17,7 +17,8 @@
         tasks (range 1e4)]
     (doseq [t tasks]
       (put! q :foo t))
-    (is (= tasks (map deref (immediate-task-seq q :foo))))))
+    (is (= tasks (map deref (immediate-task-seq q :foo))))
+    (delete! q)))
 
 (deftest test-partial-slab-writes
   (clear-tmp-directory)
@@ -45,13 +46,13 @@
       (is (= (range 5 15) (map deref tasks')))
       (doseq [t (take 5 tasks')]
         (complete! t))))
-    
+
   (with-open [q (queues "/tmp")]
     (let [tasks' (immediate-task-seq q :foo)]
       (is (= (range 10 15) (map deref tasks')))
       (doseq [t (range 15 20)]
         (put! q :foo t))))
-  
+
   (let [q (queues "/tmp" {:complete? even?})]
     (is (= (remove even? (range 10 20)) (map deref (immediate-task-seq q :foo))))))
 
@@ -128,5 +129,5 @@
     (let [s (immediate-task-seq q :stress)]
       (doseq [t s]
         (complete! t))))
-  
+
   (clear-tmp-directory))

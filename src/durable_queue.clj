@@ -219,24 +219,28 @@
 
          ;; is there a next task, and is there space left in the buffer?
          (when (and
-                 (pos? (.remaining buf'))
+                 (< header-size (.remaining buf'))
                  (== 1 (.get buf')))
 
            (lazy-seq
              (let [status (.get buf')
                    checksum (.getLong buf')
                    size (.getInt buf')]
-               (cons
 
-                 (task
-                   slab
-                   pos
-                   (+ header-size size)
-                   (read-write-lock slab))
+               ;; this shouldn't be necessary, but let's not gratuitously
+               ;; overreach our bounds
+               (when (< size (.remaining buf'))
+                 (cons
 
-                 (slab->task-seq
-                   slab
-                   (+ pos header-size size)))))))
+                   (task
+                     slab
+                     pos
+                     (+ header-size size)
+                     (read-write-lock slab))
+
+                   (slab->task-seq
+                     slab
+                     (+ pos header-size size))))))))
        (catch Throwable e
          ;; this implies unrecoverable corruption
          nil
@@ -424,6 +428,8 @@
 (defprotocol IQueues
   (^:private mark-complete! [_ q-name])
   (^:private mark-retry! [_ q-name])
+  (delete! [_]
+    "Deletes all files associated with the queues.")
   (stats [_]
     "Returns a map of queue names onto information about the immediate state of the queue.")
   (fsync [_]
@@ -610,6 +616,11 @@
                (unmap s)))
 
            IQueues
+
+           (delete! [this]
+             (doseq [s (->> @queue-name->slabs vals (apply concat))]
+               (unmap s)
+               (delete-slab s)))
 
            (fsync [_]
              (doseq [slab (->> @queue-name->slabs vals (apply concat))]
