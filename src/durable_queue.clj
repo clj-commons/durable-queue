@@ -212,39 +212,42 @@
   ([slab]
      (slab->task-seq slab 0))
   ([slab pos]
-     (try
-       (let [^ByteBuffer
-             buf' (-> (buffer slab)
-                    (.position pos))]
+     (let [lock (read-write-lock slab)]
+       (with-lock lock
+         (try
+           (let [^ByteBuffer
+                 buf' (-> (buffer slab)
+                        (.position pos))]
 
-         ;; is there a next task, and is there space left in the buffer?
-         (when (and
-                 (< header-size (.remaining buf'))
-                 (== 1 (.get buf')))
+             ;; is there a next task, and is there space left in the buffer?
+             (when (and
+                     (< header-size (.remaining buf'))
+                     (== 1 (.get buf')))
 
-           (lazy-seq
-             (let [status (.get buf')
-                   checksum (.getLong buf')
-                   size (.getInt buf')]
+               (lazy-seq
+                 (with-lock lock
+                   (let [status (.get buf')
+                         checksum (.getLong buf')
+                         size (.getInt buf')]
 
-               ;; this shouldn't be necessary, but let's not gratuitously
-               ;; overreach our bounds
-               (when (< size (.remaining buf'))
-                 (cons
+                     ;; this shouldn't be necessary, but let's not gratuitously
+                     ;; overreach our bounds
+                     (when (< size (.remaining buf'))
+                       (cons
 
-                   (task
-                     slab
-                     pos
-                     (+ header-size size)
-                     (read-write-lock slab))
+                         (task
+                           slab
+                           pos
+                           (+ header-size size)
+                           lock)
 
-                   (slab->task-seq
-                     slab
-                     (+ pos header-size size))))))))
-       (catch Throwable e
-         ;; this implies unrecoverable corruption
-         nil
-         ))))
+                         (slab->task-seq
+                           slab
+                           (+ pos header-size size)))))))))
+           (catch Throwable e
+             ;; this implies unrecoverable corruption
+             nil
+             ))))))
 
 (deftype TaskSlab
   [filename
@@ -293,7 +296,7 @@
           nil))))
 
   (append-to-slab! [this descriptor]
-    (locking this
+    (with-exclusive-lock lock
       (let [ary (nippy/freeze descriptor)
             cnt (count ary)
             pos @position
@@ -638,98 +641,98 @@
              (let [^AtomicLong retry-counter (get-in @queue-name->stats [q-name :completed])]
                (.incrementAndGet retry-counter)))
 
-          (stats [_]
-            (let [ks (keys @queue-name->stats)]
-              (zipmap ks
-                (map
-                  (fn [q-name]
-                    (merge
-                      {:num-slabs (-> @queue-name->slabs (get q-name) count)
-                       :num-active-slabs (->> (get @queue-name->slabs q-name)
-                                           (filter mapped?)
-                                           count)}
-                      (immediate-stats (queue q-name) (get @queue-name->stats q-name))))
-                  ks))))
+           (stats [_]
+             (let [ks (keys @queue-name->stats)]
+               (zipmap ks
+                 (map
+                   (fn [q-name]
+                     (merge
+                       {:num-slabs (-> @queue-name->slabs (get q-name) count)
+                        :num-active-slabs (->> (get @queue-name->slabs q-name)
+                                            (filter mapped?)
+                                            count)}
+                       (immediate-stats (queue q-name) (get @queue-name->stats q-name))))
+                   ks))))
 
-          (take! [this q-name timeout timeout-val]
-            (let [q-name (munge (name q-name))
-                  ^LinkedBlockingQueue q (queue q-name)]
-              (try
-                (if-let [t (if (zero? timeout)
-                             (.poll q)
-                             (.poll q timeout TimeUnit/MILLISECONDS))]
+           (take! [this q-name timeout timeout-val]
+             (let [q-name (munge (name q-name))
+                   ^LinkedBlockingQueue q (queue q-name)]
+               (try
+                 (if-let [t (if (zero? timeout)
+                              (.poll q)
+                              (.poll q timeout TimeUnit/MILLISECONDS))]
 
-                  (let [slab (:slab t)]
+                   (let [slab (:slab t)]
 
-                    ;; if we've moved onto a new slab, unmap all but the current and
-                    ;; last slabs
-                    (let [old-slab (@queue-name->current-slab q-name)]
-                      (when-not (= slab old-slab)
-                        (swap! queue-name->current-slab assoc q-name slab)
-                        (doseq [s (->> (get @queue-name->slabs q-name)
-                                    butlast
-                                    (remove #(= slab %)))]
-                          (unmap s))))
+                     ;; if we've moved onto a new slab, unmap all but the current and
+                     ;; last slabs
+                     (let [old-slab (@queue-name->current-slab q-name)]
+                       (when-not (= slab old-slab)
+                         (swap! queue-name->current-slab assoc q-name slab)
+                         (doseq [s (->> (get @queue-name->slabs q-name)
+                                     butlast
+                                     (remove #(= slab %)))]
+                           (unmap s))))
 
-                    (status! t :in-progress)
-                    ;; we don't need to fsync here, because in-progress and incomplete
-                    ;; are effectively equivalent on restart
+                     (status! t :in-progress)
+                     ;; we don't need to fsync here, because in-progress and incomplete
+                     ;; are effectively equivalent on restart
 
-                    t)
-                  timeout-val)
-                (catch TimeoutException _
-                  timeout-val))))
+                     t)
+                   timeout-val)
+                 (catch TimeoutException _
+                   timeout-val))))
 
-          (take! [this q-name]
-            (take! this q-name Long/MAX_VALUE nil))
+           (take! [this q-name]
+             (take! this q-name Long/MAX_VALUE nil))
 
-          (put! [_ q-name task-descriptor timeout]
-            (let [q-name (munge (name q-name))
-                  ^LinkedBlockingQueue q (queue q-name)
-                  slab! (fn []
-                          (let [slabs (@queue-name->slabs q-name)
-                                slab  (last slabs)
-                                task  (when slab
-                                        (append-to-slab! slab task-descriptor))
+           (put! [_ q-name task-descriptor timeout]
+             (let [q-name (munge (name q-name))
+                   ^LinkedBlockingQueue q (queue q-name)
+                   slab! (fn []
+                           (let [slabs (@queue-name->slabs q-name)
+                                 slab  (last slabs)
+                                 task  (when slab
+                                         (append-to-slab! slab task-descriptor))
 
-                                ;; if no task was created, we need to create a new slab file
-                                ;; and try again
-                                slab  (if task
-                                        slab
-                                        (create-new-slab q-name))
-                                task  (or task (append-to-slab! slab task-descriptor))]
+                                 ;; if no task was created, we need to create a new slab file
+                                 ;; and try again
+                                 slab  (if task
+                                         slab
+                                         (create-new-slab q-name))
+                                 task  (or task (append-to-slab! slab task-descriptor))]
 
-                            (when-not task
-                              (throw
-                                (IllegalArgumentException.
-                                  (str "Can't enqueue task whose serialized representation is larger than :slab-size, which is currently " slab-size))))
+                             (when-not task
+                               (throw
+                                 (IllegalArgumentException.
+                                   (str "Can't enqueue task whose serialized representation is larger than :slab-size, which is currently " slab-size))))
 
-                            (when fsync-put?
-                              (sync! slab))
-                            task))
+                             (when fsync-put?
+                               (sync! slab))
+                             task))
 
-                  queue! (fn [task]
-                           (if (zero? timeout)
-                             (.offer q task)
-                             (.offer q task timeout TimeUnit/MILLISECONDS)))]
-              (if-let [val (locking q
-                             (queue!
-                               (vary-meta (slab!) assoc
-                                 ::this this-ref
-                                 ::queue-name q-name
-                                 ::queue q
-                                 ::fsync? fsync-take?)))]
-                (do
-                  (populate-stats! q-name)
-                  (let [^AtomicLong counter (get-in @queue-name->stats [q-name :enqueued])]
-                    (.incrementAndGet counter))
-                  true)
-                false)
+                   queue! (fn [task]
+                            (if (zero? timeout)
+                              (.offer q task)
+                              (.offer q task timeout TimeUnit/MILLISECONDS)))]
+               (if-let [val (locking q
+                              (queue!
+                                (vary-meta (slab!) assoc
+                                  ::this this-ref
+                                  ::queue-name q-name
+                                  ::queue q
+                                  ::fsync? fsync-take?)))]
+                 (do
+                   (populate-stats! q-name)
+                   (let [^AtomicLong counter (get-in @queue-name->stats [q-name :enqueued])]
+                     (.incrementAndGet counter))
+                   true)
+                 false)
 
-              nil))
+               nil))
 
-          (put! [this q-name task-descriptor]
-            (put! this q-name task-descriptor Long/MAX_VALUE))))
+           (put! [this q-name task-descriptor]
+             (put! this q-name task-descriptor Long/MAX_VALUE))))
 
        @this-ref)))
 
