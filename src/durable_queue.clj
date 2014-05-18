@@ -81,6 +81,11 @@
   (^:private append-to-slab! [_ descriptor])
   (^:private read-write-lock [_]))
 
+(defmacro ^:private with-buffer [[buf slab] & body]
+  `(with-lock (read-write-lock ~slab)
+     (when-let [~buf (buffer ~slab)]
+       ~@body)))
+
 ;;;
 
 (defn create-buffer [filename size]
@@ -157,22 +162,24 @@
     (deserializer))
   ITask
   (status [_]
-    (or @status
-      (let [s (case (.get ^ByteBuffer (buffer slab) (p/+ offset 1))
-                0 :incomplete
-                1 :in-progress
-                2 :complete)]
-        (reset! status s)
-        s)))
+    (with-buffer [buf slab]
+      (or @status
+        (let [s (case (.get buf (p/+ offset 1))
+                  0 :incomplete
+                  1 :in-progress
+                  2 :complete)]
+          (reset! status s)
+          s))))
   (status! [_ s]
-    (reset! status s)
-    (.put ^ByteBuffer (buffer slab) (p/+ offset 1)
-      (case s
-        :incomplete 0
-        :in-progress 1
-        :complete 2))
-    (invalidate slab (p/+ offset 1) 1)
-    nil))
+    (with-buffer [buf slab]
+      (reset! status s)
+      (.put buf (p/+ offset 1)
+        (case s
+          :incomplete 0
+          :in-progress 1
+          :complete 2))
+      (invalidate slab (p/+ offset 1) 1)
+      nil)))
 
 (defn- task [slab offset len lock]
   (Task.
@@ -181,8 +188,8 @@
     len
     (atom nil)
     (fn []
-      (with-lock lock
-        (let [^ByteBuffer buf (-> (buffer slab)
+      (with-buffer [buf slab]
+        (let [^ByteBuffer buf (-> buf
                                 (.position offset)
                                 ^ByteBuffer
                                 (.limit (+ offset len))
@@ -212,42 +219,40 @@
   ([slab]
      (slab->task-seq slab 0))
   ([slab pos]
-     (let [lock (read-write-lock slab)]
-       (with-lock lock
-         (try
-           (let [^ByteBuffer
-                 buf' (-> (buffer slab)
-                        (.position pos))]
+     (with-buffer [buf slab]
+       (try
+         (let [^ByteBuffer
+               buf' (.position buf pos)]
 
-             ;; is there a next task, and is there space left in the buffer?
-             (when (and
-                     (< header-size (.remaining buf'))
-                     (== 1 (.get buf')))
+           ;; is there a next task, and is there space left in the buffer?
+           (when (and
+                   (< header-size (.remaining buf'))
+                   (== 1 (.get buf')))
 
-               (lazy-seq
-                 (with-lock lock
-                   (let [status (.get buf')
-                         checksum (.getLong buf')
-                         size (.getInt buf')]
+             (lazy-seq
+               (with-buffer [buf slab]
+                 (let [status (.get buf')
+                       checksum (.getLong buf')
+                       size (.getInt buf')]
 
-                     ;; this shouldn't be necessary, but let's not gratuitously
-                     ;; overreach our bounds
-                     (when (< size (.remaining buf'))
-                       (cons
+                   ;; this shouldn't be necessary, but let's not gratuitously
+                   ;; overreach our bounds
+                   (when (< size (.remaining buf'))
+                     (cons
 
-                         (task
-                           slab
-                           pos
-                           (+ header-size size)
-                           lock)
+                       (task
+                         slab
+                         pos
+                         (+ header-size size)
+                         (read-write-lock slab))
 
-                         (slab->task-seq
-                           slab
-                           (+ pos header-size size)))))))))
-           (catch Throwable e
-             ;; this implies unrecoverable corruption
-             nil
-             ))))))
+                       (slab->task-seq
+                         slab
+                         (+ pos header-size size)))))))))
+         (catch Throwable e
+           ;; this implies unrecoverable corruption
+           nil
+           )))))
 
 (deftype TaskSlab
   [filename
@@ -287,23 +292,21 @@
         (fn [[start end]]
           [(min start start') (max end end')]))))
 
-  (sync! [_]
+  (sync! [this]
     (let [[start end] @dirty]
       (when (< start end)
-        (when-let [^MappedByteBuffer buf @buf]
-          (force-buffer buf start (- end start))
-          (compare-and-set! dirty [start end] [Integer/MAX_VALUE 0])
-          nil))))
+        (with-buffer [_ this]
+          (let [buf @buf]
+            (force-buffer buf start (- end start))
+            (compare-and-set! dirty [start end] [Integer/MAX_VALUE 0])
+            nil)))))
 
   (append-to-slab! [this descriptor]
-    (with-exclusive-lock lock
+    (with-buffer [buf this]
       (let [ary (nippy/freeze descriptor)
             cnt (count ary)
             pos @position
-
-            ^ByteBuffer
-            buf (-> (buffer this)
-                  (.position pos))]
+            ^ByteBuffer buf (.position buf pos)]
 
         (when (> (.remaining buf) (+ (count ary) header-size))
           ;; write to the buffer
