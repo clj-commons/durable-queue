@@ -181,7 +181,7 @@
       (invalidate slab (p/+ offset 1) 1)
       nil)))
 
-(defn- task [slab offset len lock]
+(defn- task [slab offset len]
   (Task.
     slab
     offset
@@ -218,20 +218,20 @@
   "Takes a slab, and returns a sequence of the tasks it contains."
   ([slab]
      (slab->task-seq slab 0))
-  ([slab pos]
+  ([slab ^long pos]
      (with-buffer [buf slab]
        (try
-         (let [^ByteBuffer
-               buf' (.position buf pos)]
+         (let [^ByteBuffer buf' (.position buf pos)]
 
            ;; is there a next task, and is there space left in the buffer?
            (when (and
-                   (< header-size (.remaining buf'))
+                   (<= header-size (.remaining buf'))
                    (== 1 (.get buf')))
 
              (lazy-seq
                (with-buffer [buf slab]
-                 (let [status (.get buf')
+                 (let [^ByteBuffer buf' (.position buf (p/inc pos))
+                       status (.get buf')
                        checksum (.getLong buf')
                        size (.getInt buf')]
 
@@ -243,8 +243,7 @@
                        (task
                          slab
                          pos
-                         (+ header-size size)
-                         (read-write-lock slab))
+                         (+ header-size size))
 
                        (slab->task-seq
                          slab
@@ -269,11 +268,10 @@
     lock)
 
   (buffer [this]
-    (let [buf
-          (or @buf
-            (swap! buf
-              (fn [buf]
-                (or buf (load-buffer filename)))))]
+    (let [buf (or @buf
+                (swap! buf
+                  (fn [buf]
+                    (or buf (load-buffer filename)))))]
       (.duplicate ^ByteBuffer buf)))
 
   (mapped? [_]
@@ -281,10 +279,9 @@
 
   (unmap [_]
     (with-exclusive-lock lock
-      (when (.exists (io/file filename))
-        (when-let [buf @buf]
-          (unmap-buffer buf))
-        (reset! buf nil))))
+      (when-let [b @buf]
+        (reset! buf nil)
+        (unmap-buffer b))))
 
   (invalidate [_ start' len]
     (let [end' (+ start' len)]
@@ -327,8 +324,7 @@
           (task
             this
             pos
-            (+ header-size cnt)
-            lock)))))
+            (+ header-size cnt))))))
 
   clojure.lang.Seqable
   (seq [this]
