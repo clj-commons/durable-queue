@@ -726,9 +726,7 @@
                    (let [^AtomicLong counter (get-in @queue-name->stats [q-name :enqueued])]
                      (.incrementAndGet counter))
                    true)
-                 false)
-
-               nil))
+                 false)))
 
            (put! [this q-name task-descriptor]
              (put! this q-name task-descriptor Long/MAX_VALUE))))
