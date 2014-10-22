@@ -1,0 +1,213 @@
+<html lang="en">
+  <head>
+    <title>durable-queue documentation</title>
+    <link href="css/default.css" type="text/css" rel="stylesheet" />
+    <link href="css/codox-md.css" type="text/css" rel="stylesheet" />
+    <script type="text/javascript" src="js/jquery.min.js"></script>
+    <script type="text/javascript" src="js/page_effects.js"></script>
+  </head>
+  <body>
+    <header>
+      <div id="header">
+        <h1 class="project-title">Durable-queue 0.1.2 API documentation</h1>
+      </div>
+    </header>
+    <navigation>
+      <div id="namespaces" class="sidebar">
+        <h3>Namespaces</h3>
+        <ul class="ns-links">
+          <li class="ns-list"><a class="ns-link ns-name" href="durable-queue.html">durable-queue</a></li>
+        </ul>
+      </div>
+      <div id="vars" class="sidebar">
+        <h3>Public Vars</h3>
+        <ul class="ns-var-links">
+          <li class="ns-var-list"><a class="ns-var-link ns-var-name" href="durable-queue.html#var--%3ETask">-&gt;Task</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="durable-queue.html#var--%3ETaskSlab">-&gt;TaskSlab</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="durable-queue.html#var-IQueues">IQueues</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="durable-queue.html#var-ITask">ITask</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="durable-queue.html#var-ITaskSlab">ITaskSlab</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="durable-queue.html#var-complete%21">complete!</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="durable-queue.html#var-create-buffer">create-buffer</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="durable-queue.html#var-delete%21">delete!</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="durable-queue.html#var-fsync">fsync</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="durable-queue.html#var-immediate-task-seq">immediate-task-seq</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="durable-queue.html#var-interval-task-seq">interval-task-seq</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="durable-queue.html#var-load-buffer">load-buffer</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="durable-queue.html#var-map-%3ETask">map-&gt;Task</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="durable-queue.html#var-put%21">put!</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="durable-queue.html#var-queues">queues</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="durable-queue.html#var-retry%21">retry!</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="durable-queue.html#var-stats">stats</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="durable-queue.html#var-take%21">take!</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="durable-queue.html#var-task-seq">task-seq</a></li>
+        </ul>
+      </div>
+    </navigation>
+    <article>
+      <div id="content" class="namespace-docs">
+        <h2 class="namespace-title">durable-queue documentation</h2>
+        <div class="doc">
+</div>
+        <div class="ns-vars">
+          <div class="public">
+            <h3><a id="var--%3ETask" class="source var-name" href="src/durable_queue.clj">-&gt;Task</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[slab offset length status deserializer]</div>
+            
+            
+            <div class="doc"><p>Positional factory function for class durable_queue.Task.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var--%3ETaskSlab" class="source var-name" href="src/durable_queue.clj">-&gt;TaskSlab</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[filename q-name queue buf position lock dirty]</div>
+            
+            
+            <div class="doc"><p>Positional factory function for class durable_queue.TaskSlab.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-IQueues" class="source var-name" href="src/durable_queue.clj">IQueues</a></h3>
+            <h4 class="var-type var" id="var-type">var</h4>
+            
+            
+            
+            <div class="doc">
+</div>
+          </div><div class="public">
+            <h3><a id="var-ITask" class="source var-name" href="src/durable_queue.clj">ITask</a></h3>
+            <h4 class="var-type var" id="var-type">var</h4>
+            
+            
+            
+            <div class="doc">
+</div>
+          </div><div class="public">
+            <h3><a id="var-ITaskSlab" class="source var-name" href="src/durable_queue.clj">ITaskSlab</a></h3>
+            <h4 class="var-type var" id="var-type">var</h4>
+            
+            
+            
+            <div class="doc">
+</div>
+          </div><div class="public">
+            <h3><a id="var-complete%21" class="source var-name" href="src/durable_queue.clj">complete!</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[task]</div>
+            
+            
+            <div class="doc"><p>Marks a task as complete.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-create-buffer" class="source var-name" href="src/durable_queue.clj">create-buffer</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[filename size]</div>
+            
+            
+            <div class="doc">
+</div>
+          </div><div class="public">
+            <h3><a id="var-delete%21" class="source var-name" href="">delete!</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[_]</div>
+            
+            
+            <div class="doc"><p>Deletes all files associated with the queues.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-fsync" class="source var-name" href="">fsync</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[_]</div>
+            
+            
+            <div class="doc"><p>Forces an fsync on all modified files.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-immediate-task-seq" class="source var-name" href="src/durable_queue.clj">immediate-task-seq</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[qs q-name]</div>
+            
+            
+            <div class="doc"><p>Returns a finite lazy sequence of tasks for <code>q-name</code> which terminates once there are
+no more tasks immediately available.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-interval-task-seq" class="source var-name" href="src/durable_queue.clj">interval-task-seq</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[qs q-name interval]</div>
+            
+            
+            <div class="doc"><p>Returns a lazy sequence of tasks that can be consumed in <code>interval</code> milliseconds.  This will
+terminate after that time has elapsed, even if there are still tasks immediately available.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-load-buffer" class="source var-name" href="src/durable_queue.clj">load-buffer</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[filename]</div><div class="usage">[filename offset length]</div>
+            
+            
+            <div class="doc">
+</div>
+          </div><div class="public">
+            <h3><a id="var-map-%3ETask" class="source var-name" href="src/durable_queue.clj">map-&gt;Task</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[m__5818__auto__]</div>
+            
+            
+            <div class="doc"><p>Factory function for class durable_queue.Task, taking a map of keywords to field values.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-put%21" class="source var-name" href="">put!</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[_ q-name task-descriptor]</div><div class="usage">[_ q-name task-descriptor timeout]</div>
+            
+            
+            <div class="doc"><p>A blocking enqueue to <code>name</code>.  If <code>timeout</code> is specified, returns <code>false</code> if unable to
+enqueue within <code>timeout</code> milliseconds.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-queues" class="source var-name" href="src/durable_queue.clj">queues</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[directory]</div><div class="usage">[directory {:keys [max-queue-size complete? slab-size fsync-put? fsync-take? fsync-threshold fsync-interval], :or {max-queue-size Integer/MAX_VALUE, complete? nil, slab-size (* 64 1024 1024), fsync-put? true, fsync-take? false}}]</div>
+            
+            
+            <div class="doc"><p>Creates a point of interaction for queues, backed by disk storage in <code>directory</code>.</p>
+
+<p>The following options can be specified:</p>
+
+<pre><code>max-queue-size - the maximum number of elements that can be in the queue before `put!`
+                 blocks.  Defaults to `Integer/MAX_VALUE`.
+
+complete? - a predicate that is run on pre-existing tasks to check if they were already
+            completed.  If the tasks in the queue are non-idempotent, this must be
+            specified for correct behavior.  Defaults to always returning false.
+
+slab-size - The size, in bytes, of the backing files for the queue.  Defaults to 16mb.
+
+fsync-put? - if true, each `put!` will force an fsync.  Defaults to true.
+
+fsync-take? - if true, each `take!` will force an fsync.  Defaults to false.
+</code></pre>
+</div>
+          </div><div class="public">
+            <h3><a id="var-retry%21" class="source var-name" href="src/durable_queue.clj">retry!</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[task]</div>
+            
+            
+            <div class="doc"><p>Marks a task as available for retry.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-stats" class="source var-name" href="">stats</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[_]</div>
+            
+            
+            <div class="doc"><p>Returns a map of queue names onto information about the immediate state of the queue.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-take%21" class="source var-name" href="">take!</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[_ q-name]</div><div class="usage">[_ q-name timeout timeout-val]</div>
+            
+            
+            <div class="doc"><p>A blocking dequeue from <code>name</code>.  If <code>timeout</code> is specified, returns <code>timeout-val</code> if
+no task is available within <code>timeout</code> milliseconds.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-task-seq" class="source var-name" href="src/durable_queue.clj">task-seq</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[qs q-name]</div>
+            
+            
+            <div class="doc"><p>Returns an infinite lazy sequence of tasks for <code>q-name</code>.</p>
+</div>
+          </div>
+        </div>
+      </div>
+    </article>
+  </body>
+
+</html>
