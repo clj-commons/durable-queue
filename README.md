@@ -5,7 +5,7 @@ This library implements a disk-backed task queue, allowing for queues that can s
 ### usage
 
 ```clj
-[factual/durable-queue "0.1.2"]
+[factual/durable-queue "0.1.3"]
 ```
 
 To interact with queues, first create a `queues` object by specifying a directory in the filesystem and an options map:

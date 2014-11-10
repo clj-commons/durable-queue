@@ -4,6 +4,7 @@
     [byte-streams :as bs]
     [clojure.string :as str]
     [primitive-math :as p]
+    [manifold.stream :as s]
     [taoensso.nippy :as nippy])
   (:import
     [java.lang.reflect
@@ -726,9 +727,7 @@
                    (let [^AtomicLong counter (get-in @queue-name->stats [q-name :enqueued])]
                      (.incrementAndGet counter))
                    true)
-                 false)
-
-               nil))
+                 false)))
 
            (put! [this q-name task-descriptor]
              (put! this q-name task-descriptor Long/MAX_VALUE))))
@@ -774,21 +773,27 @@
 (defn complete!
   "Marks a task as complete."
   [task]
-  (status! task :complete)
-  (when (-> task meta ::fsync?)
-    (sync! (:slab task)))
-  (mark-complete! @(-> task meta ::this) (-> task meta ::queue-name))
-  true)
+  (if (identical? :complete (status task))
+    false
+    (do
+      (status! task :complete)
+      (when (-> task meta ::fsync?)
+        (sync! (:slab task)))
+      (mark-complete! @(-> task meta ::this) (-> task meta ::queue-name))
+      true)))
 
 (defn retry!
   "Marks a task as available for retry."
   [task]
-  (status! task :incomplete)
-  (when (-> task meta ::fsync?)
-    (sync! (:slab task)))
-  (mark-retry! @(-> task meta ::this) (-> task meta ::queue-name))
-  (let [^LinkedBlockingQueue q (-> task meta ::queue)]
-    (.offer q
-      task
-      Long/MAX_VALUE
-      TimeUnit/MILLISECONDS)))
+  (if (or
+        (identical? :complete (status task))
+        (identical? :incomplete (status task)))
+    false
+    (do
+      (status! task :incomplete)
+      (when (-> task meta ::fsync?)
+        (sync! (:slab task)))
+      (mark-retry! @(-> task meta ::this) (-> task meta ::queue-name))
+      (let [^LinkedBlockingQueue q (-> task meta ::queue)]
+        (.put q task))
+      true)))
