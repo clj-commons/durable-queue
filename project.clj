@@ -2,7 +2,7 @@
   :description "a in-process task-queue that is backed by disk."
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[com.taoensso/nippy "2.5.2"]
+  :dependencies [[com.taoensso/nippy "2.7.0"]
                  [primitive-math "0.1.3"]
                  [byte-streams "0.1.9"]
                  [manifold "0.1.0-alpha3"]]
