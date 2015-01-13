@@ -199,7 +199,7 @@
               ary (bs/to-byte-array (.position buf header-size))]
           (when-not (== (checksum (.getInt buf 10) ary) checksum')
             (throw (IOException. "checksum mismatch")))
-          (nippy/thaw-from-bytes ary))))))
+          (nippy/thaw ary))))))
 
 (defmethod print-method Task [t ^Writer w]
   (.write w
