@@ -4,7 +4,6 @@
     [byte-streams :as bs]
     [clojure.string :as str]
     [primitive-math :as p]
-    [manifold.stream :as s]
     [taoensso.nippy :as nippy])
   (:import
     [java.lang.reflect
@@ -199,7 +198,7 @@
               ary (bs/to-byte-array (.position buf header-size))]
           (when-not (== (checksum (.getInt buf 10) ary) checksum')
             (throw (IOException. "checksum mismatch")))
-          (nippy/thaw-from-bytes ary))))))
+          (nippy/thaw ary))))))
 
 (defmethod print-method Task [t ^Writer w]
   (.write w
@@ -446,7 +445,7 @@
     [_ q-name task-descriptor]
     [_ q-name task-descriptor timeout]
     "A blocking enqueue to `name`.  If `timeout` is specified, returns `false` if unable to
-     enqueue within `timeout` milliseconds."))
+     enqueue within `timeout` milliseconds, `true` otherwise."))
 
 (defn queues
   "Creates a point of interaction for queues, backed by disk storage in `directory`.

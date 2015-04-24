@@ -5,7 +5,7 @@ This library implements a disk-backed task queue, allowing for queues that can s
 ### usage
 
 ```clj
-[factual/durable-queue "0.1.3"]
+[factual/durable-queue "0.1.5"]
 ```
 
 To interact with queues, first create a `queues` object by specifying a directory in the filesystem and an options map:
@@ -49,11 +49,11 @@ To get a description of the current state of the queue, we can use `stats`, whic
 
 ```clj
 > (stats q)
-{:enqueued 2, 
- :retried 0, 
- :completed 1, 
- :in-progress 1, 
- :num-slabs 1, 
+{:enqueued 2,
+ :retried 0,
+ :completed 1,
+ :in-progress 1,
+ :num-slabs 1,
  :num-active-slabs 1}
 ```
 
@@ -68,7 +68,7 @@ To get a description of the current state of the queue, we can use `stats`, whic
 
 ### configuring the queues
 
-`queues` can be given a number of different options, which can affect its performance and correctness.  
+`queues` can be given a number of different options, which can affect its performance and correctness.
 
 By default, it is assumed all tasks are idempotent.  This is necessary, since the process can die at any time and leave an in-progress task in an undefined state.  If your tasks are not idempotent, a `:complete?` predicate can be defined which, on instantiation of the `queues` object, will scan through all pre-existing task descriptors and remove those for which the predicate returns true.
 
@@ -77,7 +77,7 @@ A complete list of options is as follows:
 | name | description |
 |------|-------------|
 | `:complete?` | a predicate for identifying already completed tasks, defaults to always returning false |
-| `:max-queue-size` | the maximum number of elements that can be in the queue before `put!` blocks, defaults to `Integer/MAX_VALUE`	 |
+| `:max-queue-size` | the maximum number of elements that can be in the queue before `put!` blocks, defaults to `Integer/MAX_VALUE`      |
 | `:slab-size` | The size, in bytes, of the backing files for the queue.  The size of a serialized task cannot be larger than this size, defaults to 64mb. |
 | `:fsync-put?` | Whether an fsync should be performed for each `put!`.  Defaults to `true`. |
 | `:fsync-take?` | Whether an fsync should be performed for each `take!`.  Defaults to `false`. |
@@ -90,6 +90,6 @@ Writes can be batched using `fsync-threshold` and/or `fsync-interval`, or by exp
 
 ### license
 
-Copyright © 2013 Factual Inc
+Copyright © 2015 Factual Inc
 
 Distributed under the Eclipse Public License 1.0
