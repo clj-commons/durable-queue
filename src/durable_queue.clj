@@ -767,7 +767,7 @@
             (when-not (= ::none task)
               (cons
                 task
-                (interval-task-seq q-name (- interval (- (System/currentTimeMillis) now)))))))))))
+                (interval-task-seq qs q-name (- interval (- (System/currentTimeMillis) now)))))))))))
 
 (defn complete!
   "Marks a task as complete."
