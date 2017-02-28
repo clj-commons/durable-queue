@@ -348,7 +348,7 @@
    any existing files for that queue name."
   ([directory q-name queue size]
      (locking fs-monitor
-       (let [pattern (re-pattern (str "^" q-name "_(\\d+)"))
+       (let [pattern (re-pattern (str "^" q-name "_(\\d{6})"))
              last-number (->> directory
                            io/file
                            .listFiles
@@ -398,8 +398,8 @@
   (let [queue->file (->> directory
                       io/file
                       .listFiles
-                      (filter #(re-find #"\w+_\d+" (.getName ^File %)))
-                      (group-by #(second (re-find #"(\w+)_\d+" (.getName ^File %)))))]
+                      (filter #(re-find #"^\w+_\d{6}$" (.getName ^File %)))
+                      (group-by #(second (re-find #"^(\w+)_\d{6}$" (.getName ^File %)))))]
     (zipmap
       (keys queue->file)
       (map
