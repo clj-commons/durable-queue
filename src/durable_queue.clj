@@ -348,7 +348,7 @@
    any existing files for that queue name."
   ([directory q-name queue size]
      (locking fs-monitor
-       (let [pattern (re-pattern (str "^" q-name "_(\\d{6})"))
+       (let [pattern (re-pattern (str "^" q-name "_(\\d{6}$)"))
              last-number (->> directory
                            io/file
                            .listFiles
