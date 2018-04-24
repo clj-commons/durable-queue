@@ -633,7 +633,6 @@
                  (.clear (queue q-name))
                  (swap! queue-name->stats assoc q-name nil)
                  (swap! queue-name->slabs assoc q-name nil)
-                 ;(let [reset-slab (create-new-slab q-name)]
                  (swap! queue-name->current-slab assoc q-name nil))))
 
            (fsync [_]
