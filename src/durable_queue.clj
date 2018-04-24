@@ -625,15 +625,14 @@
                (delete-slab s)))
 
            (delete-q! [this q-name]
-             (locking this
-               (let [q-name (munge (name q-name))]
-                 (doseq [s (get @queue-name->slabs q-name)]
-                   (unmap s)
-                   (delete-slab s))
-                 (.clear (queue q-name))
-                 (swap! queue-name->stats assoc q-name nil)
-                 (swap! queue-name->slabs assoc q-name nil)
-                 (swap! queue-name->current-slab assoc q-name nil))))
+             (let [q-name (munge (name q-name))]
+               (doseq [s (get @queue-name->slabs q-name)]
+                 (unmap s)
+                 (delete-slab s))
+               (.clear (queue q-name))
+               (swap! queue-name->stats assoc q-name nil)
+               (swap! queue-name->slabs assoc q-name nil)
+               (swap! queue-name->current-slab assoc q-name nil)))
 
            (fsync [_]
              (doseq [slab (->> @queue-name->slabs vals (apply concat))]
