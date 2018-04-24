@@ -432,6 +432,8 @@
   (^:private mark-retry! [_ q-name])
   (delete! [_]
     "Deletes all files associated with the queues.")
+  (delete-q! [_ q-name]
+    "Deletes all files associated with a queue.")
   (stats [_]
     "Returns a map of queue names onto information about the immediate state of the queue.")
   (fsync [_]
@@ -489,9 +491,7 @@
 
      (.mkdirs (io/file directory))
 
-     (let [
-
-           queue (memoize (fn [_] (LinkedBlockingQueue. (int max-queue-size))))
+     (let [queue (memoize (fn [_] (LinkedBlockingQueue. (int max-queue-size))))
            queue-name->files (directory->queue-name->slab-files directory)
 
            ;; core state stores
@@ -623,6 +623,18 @@
              (doseq [s (->> @queue-name->slabs vals (apply concat))]
                (unmap s)
                (delete-slab s)))
+
+           (delete-q! [this q-name]
+             (locking this
+               (let [q-name (munge (name q-name))]
+                 (doseq [s (get @queue-name->slabs q-name)]
+                   (unmap s)
+                   (delete-slab s))
+                 (.clear (queue q-name))
+                 (swap! queue-name->stats assoc q-name nil)
+                 (swap! queue-name->slabs assoc q-name nil)
+                 ;(let [reset-slab (create-new-slab q-name)]
+                 (swap! queue-name->current-slab assoc q-name nil))))
 
            (fsync [_]
              (doseq [slab (->> @queue-name->slabs vals (apply concat))]
