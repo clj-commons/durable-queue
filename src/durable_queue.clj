@@ -174,10 +174,11 @@
     (with-buffer [buf slab]
       (reset! status s)
       (.put buf (p/+ offset 1)
-        (case s
-          :incomplete 0
-          :in-progress 1
-          :complete 2))
+            (byte
+              (case s
+                :incomplete 0
+                :in-progress 1
+                :complete 2)))
       (invalidate slab (p/+ offset 1) 1)
       nil)))
 
@@ -190,9 +191,9 @@
     (fn []
       (with-buffer [buf slab]
         (let [^ByteBuffer buf (-> buf
-                                (.position offset)
+                                (.position ^Long offset)
                                 ^ByteBuffer
-                                (.limit (+ offset len))
+                                (.limit ^Long (+ offset len))
                                 .slice)
               checksum' (.getLong buf 2)
               ary (bs/to-byte-array (.position buf header-size))]
@@ -303,17 +304,17 @@
       (let [ary (nippy/freeze descriptor)
             cnt (count ary)
             pos @position
-            ^ByteBuffer buf (.position buf pos)]
+            ^ByteBuffer buf (.position buf ^Long pos)]
 
         (when (> (.remaining buf) (+ (count ary) header-size))
           ;; write to the buffer
           (doto buf
-            (.position pos)
+            (.position ^Long pos)
             (.put (byte 1))   ;; exists
             (.put (byte 0))   ;; incomplete
             (.putLong (checksum cnt ary))
             (.putInt cnt)
-            (.put ary)
+            (.put ^bytes ary)
             (.put (byte 0))) ;; next doesn't exist
 
           (swap! position + header-size cnt)
