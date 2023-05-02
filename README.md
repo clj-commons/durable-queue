@@ -8,27 +8,33 @@ This library implements a disk-backed task queue, allowing for queues that can s
 
 ### usage
 
+Leiningen:
+
 ```clj
-[factual/durable-queue "0.1.5"]
+[factual/durable-queue "0.1.6"]
 ```
 
+deps.edn
+```clj
+io.github.vedang/durable-queue {:git/sha "8dfc74193b5a78608cfe4fba821dab8b8b5644be"}
+```
 To interact with queues, first create a `queues` object by specifying a directory in the filesystem and an options map:
 
 ```clj
-> (require '[durable-queue :refer :all])
+> (require '[clj-commons.durable-queue :as dq])
 nil
-> (def q (queues "/tmp" {}))
+> (def q (dq/queues "/tmp" {}))
 #'q
 ```
 
 This allows us to `put!` and `take!` tasks from named queues.  `take!` is a blocking read, and will only return once a task is available or, if a timeout is defined (in milliseconds), once the timeout elapses:
 
 ```clj
-> (take! q :foo 10 :timed-out!)
+> (dq/take! q :foo 10 :timed-out!)
 :timed-out!
-> (put! q :foo "a task")
+> (dq/put! q :foo "a task")
 true
-> (take! q :foo)
+> (dq/take! q :foo)
 < :in-progress | "a task" >
 > (deref *1)
 "a task"
@@ -39,20 +45,20 @@ Notice that the task has a value describing its progress, and a value describing
 Calling `take!` removed the task from the queue, but just because we've taken the task doesn't mean we've completed the action associated with it.  In order to make sure the task isn't retried on restart, we must mark it as `complete!`.
 
 ```clj
-> (put! q :foo "another task")
+> (dq/put! q :foo "another task")
 true
-> (take! q :foo)
+> (dq/take! q :foo)
 < :in-progress | "another task" >
-> (complete! *1)
+> (dq/complete! *1)
 true
 ```
 
-If our task fails and we want to re-enqueue it to be tried again, we can instead call `(retry! task)`.  Tasks which are marked for retry are added to the end of the current queue.
+If our task fails and we want to re-enqueue it to be tried again, we can instead call `(dq/retry! task)`.  Tasks which are marked for retry are added to the end of the current queue.
 
 To get a description of the current state of the queue, we can use `stats`, which returns a map of queue names onto various counts:
 
 ```clj
-> (stats q)
+> (dq/stats q)
 {:enqueued 2,
  :retried 0,
  :completed 1,

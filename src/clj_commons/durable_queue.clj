@@ -1,41 +1,19 @@
-(ns durable-queue
-  "Use clj-commons.durable-queue instead."
-  {:deprecated "1.0.0"
-   :superseded-by "clj-commons.durable-queue"
-   :no-doc true}
+(ns clj-commons.durable-queue
   (:require
-   [clojure.java.io :as io]
    [clj-commons.byte-streams :as bs]
-   [clojure.string :as str]
    [clj-commons.primitive-math :as p]
+   [clojure.java.io :as io]
    [taoensso.nippy :as nippy])
   (:import
-    [java.lang.reflect
-     Method
-     Field]
-    [java.util.concurrent
-     LinkedBlockingQueue
-     TimeoutException
-     TimeUnit]
-    [java.util.concurrent.atomic
-     AtomicLong]
-    [java.util.zip
-     CRC32]
-    [java.util.concurrent.locks
-     ReentrantReadWriteLock]
-    [java.io
-     Writer
-     File
-     RandomAccessFile
-     IOException]
-    [java.nio.channels
-     FileChannel
-     FileChannel$MapMode]
-    [java.nio
-     ByteBuffer
-     MappedByteBuffer]
-    [java.lang.ref
-     WeakReference]))
+   (java.io File IOException RandomAccessFile Writer)
+   (java.lang.ref WeakReference)
+   (java.lang.reflect Method)
+   (java.nio ByteBuffer MappedByteBuffer)
+   (java.nio.channels FileChannel FileChannel$MapMode)
+   (java.util.concurrent LinkedBlockingQueue TimeoutException TimeUnit)
+   (java.util.concurrent.atomic AtomicLong)
+   (java.util.concurrent.locks ReentrantReadWriteLock)
+   (java.util.zip CRC32)))
 
 ;;;
 
@@ -82,7 +60,7 @@
   (^:private sync! [_])
   (^:private invalidate [_ offset len])
   (^:private ^ByteBuffer buffer [_])
-  (^:private append-to-slab! [_ descriptor])
+  (^:private append-to-slab! [_ task-descriptor])
   (^:private read-write-lock [_]))
 
 (defmacro ^:private with-buffer [[buf slab] & body]
@@ -143,12 +121,13 @@
           (.invoke clean
             (.invoke cleaner buf nil)
             nil))
-        (catch Throwable e
-          ;; not much we can do here, sadly
-          )))))
+        ;; not much we can do here, sadly
+        (catch Throwable _e)))))
 
 (defn- force-buffer
-  [^MappedByteBuffer buf offset length]
+  ;; We probably wanted something to do with offset and length, but we
+  ;; have forgotten. @TODO: fix this code when you understand it.
+  [^MappedByteBuffer buf _offset _length]
   (.force buf))
 
 ;;;
@@ -236,8 +215,8 @@
              (lazy-seq
                (with-buffer [buf slab]
                  (let [^ByteBuffer buf' (.position buf (p/inc pos))
-                       status (.get buf')
-                       checksum (.getLong buf')
+                       _status (.get buf')
+                       _checksum (.getLong buf')
                        size (.getInt buf')]
 
                    ;; this shouldn't be necessary, but let's not gratuitously
@@ -253,10 +232,9 @@
                        (slab->task-seq
                          slab
                          (+ pos header-size size)))))))))
-         (catch Throwable e
-           ;; this implies unrecoverable corruption
-           nil
-           )))))
+         ;; this implies unrecoverable corruption. @TODO: throw an
+         ;; exception which implies unrecoverable corruption
+         (catch Throwable _e)))))
 
 (deftype TaskSlab
   [filename
@@ -272,7 +250,7 @@
   (read-write-lock [_]
     lock)
 
-  (buffer [this]
+  (buffer [_this]
     (let [buf (or @buf
                 (swap! buf
                   (fn [buf]
@@ -297,15 +275,15 @@
   (sync! [this]
     (let [[start end] @dirty]
       (when (< start end)
-        (with-buffer [_ this]
+        (with-buffer [_buf this]
           (let [buf @buf]
             (force-buffer buf start (- end start))
             (compare-and-set! dirty [start end] [Integer/MAX_VALUE 0])
             nil)))))
 
-  (append-to-slab! [this descriptor]
+  (append-to-slab! [this task-descriptor]
     (with-buffer [buf this]
-      (let [ary (nippy/freeze descriptor)
+      (let [ary (nippy/freeze task-descriptor)
             cnt (count ary)
             pos @position
             ^ByteBuffer buf (.position buf ^Long pos)]
@@ -526,7 +504,7 @@
 
            ;; initialize
            slabs (->> @queue-name->slabs vals (apply concat))
-           slab->count (zipmap
+           _slab->count (zipmap
                          slabs
                          (map #(atom (count (seq %))) slabs))
            create-new-slab (fn [q-name]
@@ -576,8 +554,7 @@
                      (fsync q)
                      (let [end (System/nanoTime)]
                        (Thread/sleep (max 0 (- (* 1000000 fsync-interval) (- end start))))))
-                   (catch Throwable e
-                     )))))))
+                   (catch Throwable _e)))))))
 
        ;; populate queues with pre-existing tasks
        (let [empty-slabs (atom #{})]
@@ -630,12 +607,12 @@
 
            IQueues
 
-           (delete! [this]
+           (delete! [_this]
              (doseq [s (->> @queue-name->slabs vals (apply concat))]
                (unmap s)
                (delete-slab s)))
 
-           (delete-q! [this q-name]
+           (delete-q! [_this q-name]
              (let [q-name (munge (name q-name))]
                (doseq [s (get @queue-name->slabs q-name)]
                  (unmap s)
@@ -674,7 +651,7 @@
                        (immediate-stats (queue q-name) (get @queue-name->stats q-name))))
                    ks))))
 
-           (take! [this q-name timeout timeout-val]
+           (take! [_this q-name timeout timeout-val]
              (let [q-name (munge (name q-name))
                    ^LinkedBlockingQueue q (queue q-name)]
                (try
@@ -735,7 +712,7 @@
                             (if (zero? timeout)
                               (.offer q task)
                               (.offer q task timeout TimeUnit/MILLISECONDS)))]
-               (if-let [val (locking q
+               (if-let [_val (locking q
                               (queue!
                                 (vary-meta (slab!) assoc
                                   ::this this-ref

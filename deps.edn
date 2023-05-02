@@ -1,0 +1,25 @@
+{:paths ["src" "resources"]
+
+ :deps
+ {com.taoensso/nippy {:mvn/version "3.2.0"}
+  org.clj-commons/byte-streams {:mvn/version "0.3.2"}
+  org.clj-commons/primitive-math {:mvn/version "1.0.1-rc1"}}
+
+ :aliases
+ {:test
+  {:extra-paths ["test"]
+   :extra-deps {criterium/criterium {:mvn/version "0.4.6"}}}
+  ;;; Run tests with cognitect-labs/test-runner
+  ;;  clojure -X:test:congnitect :excludes '[:stress :benchmark]'
+  ;; NOTE: :stress and :benchmark generate a lot of slab files and
+  ;; need a huge amount of disk space.
+  :cognitect
+  {:extra-deps {io.github.cognitect-labs/test-runner
+                {:git/tag "v0.5.1" :git/sha "dfb30dd"}}
+   :main-opts   ["-m" "cognitect.test-runner"]
+   :exec-fn cognitect.test-runner.api/test}}
+
+ :description "a in-process task-queue that is backed by disk."
+ :url "https://github.com/clj-commons/durable-queue"
+ :license {:name "Eclipse Public License"
+           :url "http://www.eclipse.org/legal/epl-v10.html"}}
