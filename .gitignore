@@ -12,3 +12,5 @@ pom.xml.asc
 push
 *.iml
 .idea/
+.cpcache/
+.clj-kondo/.cache

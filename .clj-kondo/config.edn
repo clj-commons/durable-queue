@@ -1,0 +1,1 @@
+{:lint-as {clj-commons.durable-queue/with-buffer clojure.core/let}}
