@@ -2,7 +2,7 @@
 
  :deps
  {com.taoensso/nippy {:mvn/version "3.2.0"}
-  byte-streams/byte-streams {:mvn/version "0.2.2"}
+  org.clj-commons/byte-streams {:mvn/version "0.3.2"}
   primitive-math/primitive-math {:mvn/version "0.1.4"}}
 
  :aliases

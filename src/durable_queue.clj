@@ -5,7 +5,7 @@
    :no-doc true}
   (:require
    [clojure.java.io :as io]
-   [byte-streams :as bs]
+   [clj-commons.byte-streams :as bs]
    [clojure.string :as str]
    [primitive-math :as p]
    [taoensso.nippy :as nippy])
