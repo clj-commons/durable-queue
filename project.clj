@@ -1,5 +1,4 @@
-(defproject org.clj-commons/durable-queue
-  (or (System/getenv "PROJECT_VERSION") "0.1.6")
+(defproject org.clj-commons/durable-queue  "0.1.7"
   :description "a in-process task-queue that is backed by disk."
   :url "https://github.com/clj-commons/durable-queue"
   :license {:name "Eclipse Public License"
