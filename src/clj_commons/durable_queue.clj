@@ -1,14 +1,10 @@
-(ns durable-queue
-  "Use clj-commons.durable-queue instead."
-  {:deprecated "1.0.0"
-   :superseded-by "clj-commons.durable-queue"
-   :no-doc true}
+(ns clj-commons.durable-queue
   (:require
-   [clojure.java.io :as io]
-   [byte-streams :as bs]
-   [clojure.string :as str]
-   [primitive-math :as p]
-   [taoensso.nippy :as nippy])
+    [clojure.java.io :as io]
+    [byte-streams :as bs]
+    [clojure.string :as str]
+    [primitive-math :as p]
+    [taoensso.nippy :as nippy])
   (:import
     [java.lang.reflect
      Method

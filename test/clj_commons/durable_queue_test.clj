@@ -1,4 +1,4 @@
-(ns durable-queue-test
+(ns clj-commons.durable-queue-test
   (:require
     [clojure.java.io :as io]
     [clojure.test :refer :all]
