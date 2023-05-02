@@ -3,7 +3,7 @@
     [clojure.java.io :as io]
     [clj-commons.byte-streams :as bs]
     [clojure.string :as str]
-    [primitive-math :as p]
+    [clj-commons.primitive-math :as p]
     [taoensso.nippy :as nippy])
   (:import
     [java.lang.reflect
