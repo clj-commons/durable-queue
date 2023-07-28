@@ -561,10 +561,10 @@
              (while (.get ref)
                (when-let [q (.get ref)]
                  (try
-                   (let [start (System/currentTimeMillis)]
+                   (let [start (System/nanoTime)]
                      (fsync q)
-                     (let [end (System/currentTimeMillis)]
-                       (Thread/sleep (max 0 (- fsync-interval (- end start))))))
+                     (let [end (System/nanoTime)]
+                       (Thread/sleep (max 0 (- (* 1000000 fsync-interval) (- end start))))))
                    (catch Throwable e
                      )))))))
 
@@ -758,16 +758,16 @@
   "Returns a lazy sequence of tasks that can be consumed in `interval` milliseconds.  This will
    terminate after that time has elapsed, even if there are still tasks immediately available."
   [qs q-name interval]
-  (let [now (System/currentTimeMillis)]
+  (let [now (System/nanoTime)]
     (lazy-seq
-      (let [now' (System/currentTimeMillis)
-            remaining (- interval (- now' now))]
+      (let [now' (System/nanoTime)
+            remaining (- (* 1000000 interval) (- now' now))]
         (when (pos? remaining)
           (let [task (take! qs q-name remaining ::none)]
             (when-not (= ::none task)
               (cons
                 task
-                (interval-task-seq qs q-name (- interval (- (System/currentTimeMillis) now)))))))))))
+                (interval-task-seq qs q-name (- (* 1000000 interval) (- (System/nanoTime) now)))))))))))
 
 (defn complete!
   "Marks a task as complete."
