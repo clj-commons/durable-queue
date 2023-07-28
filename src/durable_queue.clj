@@ -590,12 +590,13 @@
                      (swap! empty-slabs conj slab))
 
                    (do
-                     (doseq [task tasks]
-                       (status! task :incomplete)
-                       (when-not (.offer q' task)
-                         (throw
-                           (IllegalArgumentException.
-                             "'max-queue-size' insufficient to hold existing tasks."))))
+                     (loop [tasks tasks]
+                       (when-let [task (first tasks)]
+                         (status! task :incomplete)
+                         ; Continue loading until data doesn't fit into the queue. 
+                         ; Drop data in slabs that overflows queue size.
+                         (when (.offer q' task)
+                           (recur (rest tasks)))))
                      (unmap slab)))))
 
              (let [^AtomicLong counter (get-in @queue-name->stats [q :enqueued])]
