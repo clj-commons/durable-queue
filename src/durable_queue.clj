@@ -463,7 +463,13 @@
 
        fsync-put? - if true, each `put!` will force an fsync.  Defaults to true.
 
-       fsync-take? - if true, each `take!` will force an fsync.  Defaults to false."
+       fsync-take? - if true, each `take!` will force an fsync.  Defaults to false.
+
+       fsync-threshold - The maximum number of writes (puts, takes, retries, completes) that
+                         can be performed before an fsync is performed.
+
+       fsync-interval - The maximum amount of time, in milliseconds, that can elapse before
+                        an fsync is performed. "
   ([directory]
      (queues directory nil))
   ([directory
