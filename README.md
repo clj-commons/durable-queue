@@ -1,3 +1,7 @@
+[![Clojars Project](https://img.shields.io/clojars/v/org.clj-commons/durable-queue.svg)](https://clojars.org/org.clj-commons/durable-queue)
+[![cljdoc badge](https://cljdoc.org/badge/org.clj-commons/durable-queue)](https://cljdoc.org/d/org.clj-commons/durable-queue)
+[![CircleCI](https://circleci.com/gh/clj-commons/durable-queue.svg?style=svg)](https://circleci.com/gh/clj-commons/durable-queue)
+
 ![](docs/EasterIsland.jpg)
 
 This library implements a disk-backed task queue, allowing for queues that can survive processes dying, and whose size is bounded by available disk rather than memory.  It is a small, purely-Clojure implementation focused entirely on the in-process use case, meaning that it is both simpler and more easily embedded than network-aware queue implementations such as Kafka and ActiveMQ.

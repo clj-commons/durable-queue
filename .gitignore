@@ -12,3 +12,6 @@ pom.xml.asc
 push
 *.iml
 .idea/
+.clj-kondo/.cache
+.lsp/.cache
+.portal/vs-code.edn
