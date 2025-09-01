@@ -565,7 +565,7 @@
                    (let [start (System/currentTimeMillis)]
                      (fsync q)
                      (let [end (System/currentTimeMillis)]
-                       (Thread/sleep (max 0 (- fsync-interval (- end start))))))
+                       (Thread/sleep (long (max 0 (- fsync-interval (- end start)))))))
                    (catch Throwable e
                      )))))))
 

@@ -28,7 +28,7 @@
 
 (deftest test-retry
   (clear-tmp-directory)
-  (with-open [q (queues "/tmp")]
+  (with-open [^java.io.Closeable q (queues "/tmp")]
 
     (doseq [t (range 10)]
       (put! q :foo t))
@@ -41,13 +41,13 @@
         (put! q :foo t))))
 
   ;; create a new manager, which will mark all in-progress tasks as incomplete
-  (with-open [q (queues "/tmp")]
+  (with-open [^java.io.Closeable q (queues "/tmp")]
     (let [tasks' (immediate-task-seq q :foo)]
       (is (= (range 5 15) (map deref tasks')))
       (doseq [t (take 5 tasks')]
         (complete! t))))
 
-  (with-open [q (queues "/tmp")]
+  (with-open [^java.io.Closeable q (queues "/tmp")]
     (let [tasks' (immediate-task-seq q :foo)]
       (is (= (range 10 15) (map deref tasks')))
       (doseq [t (range 15 20)]
@@ -115,14 +115,14 @@
 (deftest ^:stress stress-queue-size
   (clear-tmp-directory)
 
-  (with-open [q (queues "/tmp")]
+  (with-open [^java.io.Closeable q (queues "/tmp")]
     (let [ary (byte-array 1e6)]
       (dotimes [i 1e6]
         (aset ary i (byte (rand-int 127))))
       (dotimes [_ 1e5]
         (put! q :stress ary))))
 
-  (with-open [q (queues "/tmp" {:complete? (constantly false)})]
+  (with-open [^java.io.Closeable q (queues "/tmp" {:complete? (constantly false)})]
     (let [s (doall (immediate-task-seq q :stress))]
       (doseq [t s]
         (retry! t)))
