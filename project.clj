@@ -8,12 +8,14 @@
                                     :username :env/clojars_username
                                     :password :env/clojars_password
                                     :sign-releases true}]]
-  :dependencies [[com.taoensso/nippy "2.8.0"]
-                 [primitive-math "0.1.4"]
-                 [byte-streams "0.2.2"]]
-  :profiles {:dev {:dependencies [[org.clojure/clojure "1.10.0"]
-                                  [criterium "0.4.6"]
-]}}
+  :dependencies [[com.taoensso/nippy "3.6.0"]
+                 [org.clj-commons/primitive-math "1.0.1"]
+                 [org.clj-commons/byte-streams "0.3.4"]]
+  :profiles {:dev {:dependencies [[org.clojure/clojure "1.10.3"]
+                                  [criterium/criterium "0.4.6"]]}
+             :1.10 {:dependencies [[org.clojure/clojure "1.10.3"]]}
+             :1.11 {:dependencies [[org.clojure/clojure "1.11.4"]]}
+             :1.12 {:dependencies [[org.clojure/clojure "1.12.2"]]}}
   :global-vars {*warn-on-reflection* true}
   :test-selectors {:default #(not (some #{:benchmark :stress} (keys %)))
                    :benchmark :benchmark
