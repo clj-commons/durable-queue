@@ -10,6 +10,8 @@ pom.xml.asc
 .DS_Store
 /doc
 push
+*.iml
+.idea/
 .clj-kondo/.cache
 .lsp/.cache
 .portal/vs-code.edn
