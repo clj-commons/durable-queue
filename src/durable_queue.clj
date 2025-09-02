@@ -1,37 +1,29 @@
 (ns durable-queue
   (:require
-    [clojure.java.io :as io]
-    [byte-streams :as bs]
-    [clojure.string :as str]
-    [primitive-math :as p]
-    [taoensso.nippy :as nippy])
+   [clj-commons.byte-streams :as bs]
+   [clj-commons.primitive-math :as p]
+   [clojure.java.io :as io]
+   [taoensso.nippy :as nippy])
   (:import
-    [java.lang.reflect
-     Method
-     Field]
-    [java.util.concurrent
-     LinkedBlockingQueue
-     TimeoutException
-     TimeUnit]
-    [java.util.concurrent.atomic
-     AtomicLong]
-    [java.util.zip
-     CRC32]
-    [java.util.concurrent.locks
-     ReentrantReadWriteLock]
-    [java.io
-     Writer
-     File
-     RandomAccessFile
-     IOException]
-    [java.nio.channels
-     FileChannel
+   [java.io
+    File
+    IOException
+    RandomAccessFile
+    Writer]
+   [java.lang.ref
+     WeakReference]
+   [java.lang.reflect
+     Method]
+   [java.nio ByteBuffer MappedByteBuffer]
+   [java.nio.channels
      FileChannel$MapMode]
-    [java.nio
-     ByteBuffer
-     MappedByteBuffer]
-    [java.lang.ref
-     WeakReference]))
+   [java.util.concurrent LinkedBlockingQueue TimeUnit TimeoutException]
+   [java.util.concurrent.atomic
+     AtomicLong]
+   [java.util.concurrent.locks
+     ReentrantReadWriteLock]
+   [java.util.zip
+     CRC32]))
 
 ;;;
 
@@ -78,7 +70,7 @@
   (^:private sync! [_])
   (^:private invalidate [_ offset len])
   (^:private ^ByteBuffer buffer [_])
-  (^:private append-to-slab! [_ descriptor])
+  (^:private append-to-slab! [_ task-descriptor])
   (^:private read-write-lock [_]))
 
 (defmacro ^:private with-buffer [[buf slab] & body]
@@ -139,12 +131,12 @@
           (.invoke clean
             (.invoke cleaner buf nil)
             nil))
-        (catch Throwable e
+        (catch Throwable _
           ;; not much we can do here, sadly
           )))))
 
 (defn- force-buffer
-  [^MappedByteBuffer buf offset length]
+  [^MappedByteBuffer buf _offset _length]
   (.force buf))
 
 ;;;
@@ -232,8 +224,8 @@
              (lazy-seq
                (with-buffer [buf slab]
                  (let [^ByteBuffer buf' (.position buf (p/inc pos))
-                       status (.get buf')
-                       checksum (.getLong buf')
+                       _status (.get buf')
+                       _checksum (.getLong buf')
                        size (.getInt buf')]
 
                    ;; this shouldn't be necessary, but let's not gratuitously
@@ -249,7 +241,7 @@
                        (slab->task-seq
                          slab
                          (+ pos header-size size)))))))))
-         (catch Throwable e
+         (catch Throwable _
            ;; this implies unrecoverable corruption
            nil
            )))))
@@ -268,7 +260,7 @@
   (read-write-lock [_]
     lock)
 
-  (buffer [this]
+  (buffer [_]
     (let [buf (or @buf
                 (swap! buf
                   (fn [buf]
@@ -299,9 +291,9 @@
             (compare-and-set! dirty [start end] [Integer/MAX_VALUE 0])
             nil)))))
 
-  (append-to-slab! [this descriptor]
+  (append-to-slab! [this task-descriptor]
     (with-buffer [buf this]
-      (let [ary (nippy/freeze descriptor)
+      (let [ary (nippy/freeze task-descriptor)
             cnt (count ary)
             pos @position
             ^ByteBuffer buf (.position buf ^Long pos)]
@@ -515,10 +507,6 @@
            queue-name->current-slab (atom {})
 
            ;; initialize
-           slabs (->> @queue-name->slabs vals (apply concat))
-           slab->count (zipmap
-                         slabs
-                         (map #(atom (count (seq %))) slabs))
            create-new-slab (fn [q-name]
                              (let [slab (create-slab directory q-name (queue q-name) slab-size)
                                    empty-slabs (->> (@queue-name->slabs q-name)
@@ -566,8 +554,7 @@
                      (fsync q)
                      (let [end (System/currentTimeMillis)]
                        (Thread/sleep (long (max 0 (- fsync-interval (- end start)))))))
-                   (catch Throwable e
-                     )))))))
+                   (catch Throwable _)))))))
 
        ;; populate queues with pre-existing tasks
        (let [empty-slabs (atom #{})]
@@ -620,7 +607,7 @@
 
            IQueues
 
-           (delete! [this]
+           (delete! [_]
              (doseq [s (->> @queue-name->slabs vals (apply concat))]
                (unmap s)
                (delete-slab s)))
@@ -654,7 +641,7 @@
                        (immediate-stats (queue q-name) (get @queue-name->stats q-name))))
                    ks))))
 
-           (take! [this q-name timeout timeout-val]
+           (take! [_ q-name timeout timeout-val]
              (let [q-name (munge (name q-name))
                    ^LinkedBlockingQueue q (queue q-name)]
                (try
@@ -704,8 +691,8 @@
 
                              (when-not task
                                (throw
-                                 (IllegalArgumentException.
-                                   (str "Can't enqueue task whose serialized representation is larger than :slab-size, which is currently " slab-size))))
+                                (IllegalArgumentException.
+                                 (str "Can't enqueue task whose serialized representation is larger than :slab-size, which is currently " slab-size))))
 
                              (when fsync-put?
                                (sync! slab))
@@ -715,13 +702,13 @@
                             (if (zero? timeout)
                               (.offer q task)
                               (.offer q task timeout TimeUnit/MILLISECONDS)))]
-               (if-let [val (locking q
-                              (queue!
-                                (vary-meta (slab!) assoc
-                                  ::this this-ref
-                                  ::queue-name q-name
-                                  ::queue q
-                                  ::fsync? fsync-take?)))]
+               (if (locking q
+                     (queue!
+                      (vary-meta (slab!) assoc
+                                 ::this this-ref
+                                 ::queue-name q-name
+                                 ::queue q
+                                 ::fsync? fsync-take?)))
                  (do
                    (populate-stats! q-name)
                    (let [^AtomicLong counter (get-in @queue-name->stats [q-name :enqueued])]
