@@ -15,20 +15,20 @@ This library implements a disk-backed task queue, allowing for queues that can s
 To interact with queues, first create a `queues` object by specifying a directory in the filesystem and an options map:
 
 ```clj
-> (require '[durable-queue :refer :all])
+> (require '[durable-queue :as dq])
 nil
-> (def q (queues "/tmp" {}))
+> (def q (dq/queues "/tmp" {}))
 #'q
 ```
 
 This allows us to `put!` and `take!` tasks from named queues.  `take!` is a blocking read, and will only return once a task is available or, if a timeout is defined (in milliseconds), once the timeout elapses:
 
 ```clj
-> (take! q :foo 10 :timed-out!)
+> (dq/take! q :foo 10 :timed-out!)
 :timed-out!
-> (put! q :foo "a task")
+> (dq/put! q :foo "a task")
 true
-> (take! q :foo)
+> (dq/take! q :foo)
 < :in-progress | "a task" >
 > (deref *1)
 "a task"
@@ -39,20 +39,20 @@ Notice that the task has a value describing its progress, and a value describing
 Calling `take!` removed the task from the queue, but just because we've taken the task doesn't mean we've completed the action associated with it.  In order to make sure the task isn't retried on restart, we must mark it as `complete!`.
 
 ```clj
-> (put! q :foo "another task")
+> (dq/put! q :foo "another task")
 true
-> (take! q :foo)
+> (dq/take! q :foo)
 < :in-progress | "another task" >
-> (complete! *1)
+> (dq/complete! *1)
 true
 ```
 
-If our task fails and we want to re-enqueue it to be tried again, we can instead call `(retry! task)`.  Tasks which are marked for retry are added to the end of the current queue.
+If our task fails and we want to re-enqueue it to be tried again, we can instead call `(dq/retry! task)`.  Tasks which are marked for retry are added to the end of the current queue.
 
 To get a description of the current state of the queue, we can use `stats`, which returns a map of queue names onto various counts:
 
 ```clj
-> (stats q)
+> (dq/stats q)
 {:enqueued 2,
  :retried 0,
  :completed 1,
@@ -90,7 +90,7 @@ A complete list of options is as follows:
 
 Disabling `:fsync-put?` will risk losing tasks if a process dies.  Disabling `:fsync-take?` increases the chance of a task being re-run when a process dies.  Disabling both will increase throughput of the queue by at least an order of magnitude (in the default configuration, ~1.5k tasks/sec on rotating disks and ~6k tasks/sec on SSD, with fsync completely disabled ~100k tasks/sec independent of hardware).
 
-Writes can be batched using `fsync-threshold` and/or `fsync-interval`, or by explicitly calling `(durable-queue/fsync q)`.  Setting the `fsync-threshold` to 10 will allow for ~25k tasks/sec on SSD, and still enforces a small upper boundary on how much data can be lost when the process dies.  An exception will be thrown if both per-task and batch sync options are set.
+Writes can be batched using `fsync-threshold` and/or `fsync-interval`, or by explicitly calling `(dq/fsync q)`.  Setting the `fsync-threshold` to 10 will allow for ~25k tasks/sec on SSD, and still enforces a small upper boundary on how much data can be lost when the process dies.  An exception will be thrown if both per-task and batch sync options are set.
 
 ### license
 
