@@ -16,7 +16,7 @@
 
 (def lib 'org.clj-commons/durable-queue)
 (defn- the-version [patch] (format "0.1.%s" patch))
-(def version (the-version "7"))
+(def version (the-version "8")) ; unreleased
 (def snapshot (the-version "99-SNAPSHOT"))
 (def class-dir "target/classes")
 
