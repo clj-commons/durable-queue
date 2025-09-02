@@ -1,0 +1,38 @@
+name: Release Version
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+      - name: Setup Clojure
+        uses: DeLaGuardo/setup-clojure@master
+        with:
+          cli: '1.12.2.1565'
+          bb: 'latest'
+      - name: Cache All The Things
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.gitlibs
+            ~/.clojure
+            ~/.cpcache
+            ~/.deps.clj
+          key: ${{ runner.os }}-${{ hashFiles('**/deps.edn', '**/bb.edn') }}
+      - name: Run All Tests, then Build & Deploy Release
+        run: bb ci:deploy jdk21
+        env:
+          CLOJARS_PASSWORD: ${{secrets.DEPLOY_TOKEN}}
+          CLOJARS_USERNAME: ${{secrets.DEPLOY_USERNAME}}

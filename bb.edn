@@ -1,0 +1,48 @@
+{:tasks
+ {:requires [[clojure.string :as str]]
+
+  test {:doc "Run the test suite."
+        :task
+        (let [all?     (some #{"all"} *command-line-args*) ; test all clojure versions?
+              bench?   (some #{"bench"} *command-line-args*)
+              stress?  (some #{"stress"} *command-line-args*)
+              versions (or (seq (filter (fn [v] (str/starts-with? v "1."))
+                                        *command-line-args*))
+                           ["1.10"])
+              base-jdk (first (filter (fn [v] (str/starts-with? v "jdk"))
+                                      *command-line-args*))
+              jdk      (or base-jdk
+                           ;; sean's local default:
+                           "jdk24")
+              test-selectors
+              (cond bench?  ["-i" ":benchmark"]
+                    stress? ["-i" ":stress"]
+                    :else   ["-e" ":benchmark"
+                             "-e" ":stress"])]
+          (doseq [v (if all? ["1.10" "1.11" "1.12"] versions)]
+            (println "\nTesting Clojure" v)
+            (apply shell "clojure"
+                   (str "-M"
+                        (str ":" v)
+                        ":test:runner"
+                        ;; add jdk-specific alias if provided
+                        ":" jdk)
+                   test-selectors)))}
+
+  test:all {:doc "Run the test suite for all Clojure versions."
+            :task (binding [*command-line-args* (conj *command-line-args* "all")]
+                    (run 'test))}
+
+  -snapshot {:doc "Return snapshot options, if requested."
+             :task (->> (if (some #{"snapshot"} *command-line-args*)
+                          [:snapshot true]
+                          [])
+                        (map str))}
+
+  ci {:doc "Run the CI pipeline of tests and build the JAR."
+      :depends [test:all]
+      :task (apply shell "clojure -T:build jar" (run '-snapshot))}
+
+  ci:deploy {:doc "Deploy the JAR we just built to Clojars."
+             :depends [ci]
+             :task (apply shell "clojure -T:build deploy" (run '-snapshot))}}}

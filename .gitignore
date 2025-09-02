@@ -1,5 +1,6 @@
 .calva/mcp-server/port
 .clj-kondo/.cache
+.cpcache
 .DS_Store
 .idea/
 .lsp/.cache
