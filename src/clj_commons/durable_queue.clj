@@ -1,5 +1,4 @@
-(ns ^:no-doc durable-queue
-  "DEPRECATED in 0.2.0: use clj-commons.durable-queue instead."
+(ns clj-commons.durable-queue
   (:require
    [clj-commons.byte-streams :as bs]
    [clj-commons.primitive-math :as p]
@@ -12,19 +11,19 @@
     RandomAccessFile
     Writer]
    [java.lang.ref
-    WeakReference]
+     WeakReference]
    [java.lang.reflect
-    Method]
+     Method]
    [java.nio ByteBuffer MappedByteBuffer]
    [java.nio.channels
-    FileChannel$MapMode]
+     FileChannel$MapMode]
    [java.util.concurrent LinkedBlockingQueue TimeUnit TimeoutException]
    [java.util.concurrent.atomic
-    AtomicLong]
+     AtomicLong]
    [java.util.concurrent.locks
-    ReentrantReadWriteLock]
+     ReentrantReadWriteLock]
    [java.util.zip
-    CRC32]))
+     CRC32]))
 
 ;;;
 

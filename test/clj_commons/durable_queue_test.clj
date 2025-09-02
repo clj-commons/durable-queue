@@ -1,13 +1,12 @@
-(ns durable-queue-test
-  "This tests the DEPRECATED single-segment namespace."
+(ns clj-commons.durable-queue-test
   (:require
-    [clojure.java.io :as io]
-    [clojure.test :refer [deftest is]]
-    [durable-queue :as dq]
-    [criterium.core :as c]))
+   [clj-commons.durable-queue :as dq]
+   [clojure.java.io :as io]
+   [clojure.test :refer [deftest is]]
+   [criterium.core :as c]))
 
 (defn clear-tmp-directory []
-  (doseq [f (->> (#'durable-queue/directory->queue-name->slab-files "/tmp")
+  (doseq [f (->> (#'clj-commons.durable-queue/directory->queue-name->slab-files "/tmp")
               vals
               (apply concat))]
     (.delete (io/file f))))

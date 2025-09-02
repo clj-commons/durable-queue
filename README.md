@@ -15,7 +15,7 @@ This library implements a disk-backed task queue, allowing for queues that can s
 To interact with queues, first create a `queues` object by specifying a directory in the filesystem and an options map:
 
 ```clj
-> (require '[durable-queue :as dq])
+> (require '[clj-commons.durable-queue :as dq])
 nil
 > (def q (dq/queues "/tmp" {}))
 #'q

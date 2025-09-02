@@ -15,8 +15,8 @@
             [deps-deploy.deps-deploy :as dd]))
 
 (def lib 'org.clj-commons/durable-queue)
-(defn- the-version [patch] (format "0.1.%s" patch))
-(def version (the-version "8")) ; unreleased
+(defn- the-version [patch] (format "0.2.%s" patch))
+(def version (the-version "0")) ; 0.2.0 unreleased
 (def snapshot (the-version "99-SNAPSHOT"))
 (def class-dir "target/classes")
 

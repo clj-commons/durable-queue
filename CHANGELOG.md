@@ -1,6 +1,7 @@
 ## CHANGES
 
-v0.1.8 in progress
+v0.2.0 in progress
+* Deprecated single-segment `durable-queue` ns; use `clj-commons.durable-queue` instead
 * Clean up lint issues; export clj-kondo config
 * Add a changelog!
 

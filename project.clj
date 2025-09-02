@@ -21,5 +21,5 @@
                    :benchmark :benchmark
                    :stress :stress}
   :codox {:writer codox-md.writer/write-docs
-          :include [durable-queue]}
+          :include [clj-commons.durable-queue]}
   :jvm-opts ^:replace ["-server" "-Xmx100m"])
