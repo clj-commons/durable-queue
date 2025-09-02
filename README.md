@@ -1,6 +1,6 @@
 [![Clojars Project](https://img.shields.io/clojars/v/org.clj-commons/durable-queue.svg)](https://clojars.org/org.clj-commons/durable-queue)
 [![cljdoc badge](https://cljdoc.org/badge/org.clj-commons/durable-queue)](https://cljdoc.org/d/org.clj-commons/durable-queue)
-[![Clojure CI Release](https://github.com/clj-commons/durable-queue/actions/workflows/test-and-release.yml/badge.svg)](https://github.com/clj-commons/durable-queue/actions/workflows/test-and-release.yml) [![Clojure CI Develop](https://github.com/clj-commons/durable-queue/actions/workflows/test-and-snapshot.yml/badge.svg)](https://github.com/clj-commons/durable-queue/actions/workflows/test-and-snapshot.yml) [![Clojure CI Pull Request](https://github.com/clj-commons/durable-queue/actions/workflows/test.yml/badge.svg)](https://github.com/clj-commons/durable-queue/actions/workflows/test.yml)
+[![Clojure CI Release](https://github.com/clj-commons/durable-queue/actions/workflows/test-and-release.yml/badge.svg)](https://github.com/clj-commons/durable-queue/actions/workflows/test-and-release.yml) [![Clojure CI Master](https://github.com/clj-commons/durable-queue/actions/workflows/test-and-snapshot.yml/badge.svg)](https://github.com/clj-commons/durable-queue/actions/workflows/test-and-snapshot.yml) [![Clojure CI Pull Request](https://github.com/clj-commons/durable-queue/actions/workflows/test.yml/badge.svg)](https://github.com/clj-commons/durable-queue/actions/workflows/test.yml)
 
 ![](docs/EasterIsland.jpg)
 
