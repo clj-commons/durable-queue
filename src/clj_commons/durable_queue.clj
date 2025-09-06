@@ -424,7 +424,11 @@
   (^:private mark-complete! [_ q-name])
   (^:private mark-retry! [_ q-name])
   (delete! [_]
-    "Deletes all files associated with the queues.")
+    "DEPRECATED: Deletes all files associated with all queues. Dangerous!")
+  (delete-queue! [_ q-name]
+    "Deletes the specific queue, including all associated files.")
+  (delete-all! [_]
+    "Deletes all queues, including all associated files.")
   (stats [_]
     "Returns a map of queue names onto information about the immediate state of the queue.")
   (fsync [_]
@@ -432,12 +436,12 @@
   (take!
     [_ q-name]
     [_ q-name timeout timeout-val]
-    "A blocking dequeue from `name`.  If `timeout` is specified, returns `timeout-val` if
+    "A blocking dequeue from `q-name`.  If `timeout` is specified, returns `timeout-val` if
      no task is available within `timeout` milliseconds.")
   (put!
     [_ q-name task-descriptor]
     [_ q-name task-descriptor timeout]
-    "A blocking enqueue to `name`.  If `timeout` is specified, returns `false` if unable to
+    "A blocking enqueue to `q-name`.  If `timeout` is specified, returns `false` if unable to
      enqueue within `timeout` milliseconds, `true` otherwise."))
 
 (defn queues
@@ -613,10 +617,24 @@
 
            IQueues
 
-           (delete! [_]
+           (delete! [_] ; DEPRECATED and dangerous since it breaks the queues
              (doseq [s (->> @queue-name->slabs vals (apply concat))]
                (unmap s)
                (delete-slab s)))
+
+           (delete-queue! [_ q-name]
+             (let [q-name (munge (name q-name))]
+               (doseq [s (get @queue-name->slabs q-name)]
+                 (unmap s)
+                 (delete-slab s))
+               (.clear (queue q-name))
+               (swap! queue-name->stats dissoc q-name)
+               (swap! queue-name->slabs dissoc q-name)
+               (swap! queue-name->current-slab dissoc q-name)))
+
+           (delete-all! [this]
+             (doseq [q (keys @queue-name->stats )]
+               (delete-queue! this q)))
 
            (fsync [_]
              (doseq [slab (->> @queue-name->slabs vals (apply concat))]
@@ -637,15 +655,15 @@
            (stats [_]
              (let [ks (keys @queue-name->stats)]
                (zipmap ks
-                 (map
-                   (fn [q-name]
-                     (merge
-                       {:num-slabs (-> @queue-name->slabs (get q-name) count)
-                        :num-active-slabs (->> (get @queue-name->slabs q-name)
-                                            (filter mapped?)
-                                            count)}
-                       (immediate-stats (queue q-name) (get @queue-name->stats q-name))))
-                   ks))))
+                       (map
+                        (fn [q-name]
+                          (merge
+                           {:num-slabs (-> @queue-name->slabs (get q-name) count)
+                            :num-active-slabs (->> (get @queue-name->slabs q-name)
+                                                   (filter mapped?)
+                                                   count)}
+                           (immediate-stats (queue q-name) (get @queue-name->stats q-name))))
+                        ks))))
 
            (take! [_ q-name timeout timeout-val]
              (let [q-name (munge (name q-name))
@@ -663,8 +681,8 @@
                        (when-not (= slab old-slab)
                          (swap! queue-name->current-slab assoc q-name slab)
                          (doseq [s (->> (get @queue-name->slabs q-name)
-                                     butlast
-                                     (remove #(= slab %)))]
+                                        butlast
+                                        (remove #(= slab %)))]
                            (unmap s))))
 
                      (status! t :in-progress)

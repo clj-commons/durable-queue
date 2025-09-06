@@ -70,6 +70,20 @@ To get a description of the current state of the queue, we can use `stats`, whic
 | `:num-slabs` | the number of underlying files which are being used to store tasks |
 | `:num-active-slabs` | the number of underlying files which are currently open and mapped into memory |
 
+As of version 0.2.0, you can delete an entire queue using `delete-queue!`, which will remove all tasks and delete all files associated with the queue:
+
+```clj
+> (dq/delete-queue! q :foo)
+{}
+```
+
+As of version 0.2.0, you can also delete all queues using `delete-all!`, which will remove all tasks and delete all files associated with all queues:
+
+```clj
+> (dq/delete-all! q)
+nil
+```
+
 ### configuring the queues
 
 `queues` can be given a number of different options, which can affect its performance and correctness.

@@ -17,8 +17,7 @@
         tasks (range 1e4)]
     (doseq [t tasks]
       (dq/put! q :foo t))
-    (is (= tasks (map deref (dq/immediate-task-seq q :foo))))
-    (dq/delete! q)))
+    (is (= tasks (map deref (dq/immediate-task-seq q :foo))))))
 
 (deftest test-partial-slab-writes
   (clear-tmp-directory)
