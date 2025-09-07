@@ -1,6 +1,4 @@
-{:mvn/repos {"sonatype" {:url "https://oss.sonatype.org/content/repositories/snapshots/"}
-             "ossrh-snapshots" {:url "https://s01.oss.sonatype.org/content/repositories/snapshots"}}
- :paths ["src"]
+{:paths ["src"]
  :deps {org.clojure/clojure {:mvn/version "1.10.3"}
         com.taoensso/nippy {:mvn/version "3.6.0"}
         org.clj-commons/primitive-math {:mvn/version "1.0.1"}
@@ -21,8 +19,7 @@
   :test {:extra-paths ["test"]
          :extra-deps {io.github.cognitect-labs/test-runner
                       {:git/tag "v0.5.1" :git/sha "dfb30dd"}
-                      criterium/criterium {:mvn/version "0.4.6"}}
-         :jvm-opts ["-Dlog4j2.configurationFile=log4j2-info.properties"]}
+                      criterium/criterium {:mvn/version "0.4.6"}}}
   :runner {:main-opts ["-m" "cognitect.test-runner"]}
   :jdk11 {}
   :jdk17 {}
