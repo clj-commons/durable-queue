@@ -1,7 +1,7 @@
 ## CHANGES
 
 v0.2.0 in progress
-* Deprecated single-segment `durable-queue` ns; use `clj-commons.durable-queue` instead
+* Removed single-segment `durable-queue` ns; use `clj-commons.durable-queue` instead
 * Deprecate `delete!` because it is dangerous: it leaves queues in a corrupted state (because it deletes files without cleaning up in-memory state).
 * Address [#30](https://github.com/clj-commons/durable-queue/issues/30) by adding `delete-queue!` and `delete-all!` to safely delete an individual queue (and its files) and safely delete all queues (and their files).
 * Clean up lint issues; export clj-kondo config
