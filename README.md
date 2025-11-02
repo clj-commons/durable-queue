@@ -9,7 +9,7 @@ This library implements a disk-backed task queue, allowing for queues that can s
 ### usage
 
 ```clj
-[org.clj-commons/durable-queue "0.1.7"]
+[org.clj-commons/durable-queue "0.2.0"]
 ```
 
 To interact with queues, first create a `queues` object by specifying a directory in the filesystem and an options map:
