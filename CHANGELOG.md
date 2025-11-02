@@ -5,6 +5,7 @@ v0.2.0 -- 2025-11-02
 * Deprecate `delete!` because it is dangerous: it leaves queues in a corrupted state (because it deletes files without cleaning up in-memory state).
 * Address [#30](https://github.com/clj-commons/durable-queue/issues/30) by adding `delete-queue!` and `delete-all!` to safely delete an individual queue (and its files) and safely delete all queues (and their files).
 * Clean up lint issues; export clj-kondo config
+* Update dependencies (again)
 * Add a changelog!
 
 v0.1.7 -- 2025-09-02
