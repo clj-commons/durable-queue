@@ -1,5 +1,8 @@
 ## CHANGES
 
+v0.2.next in progress
+* Update dev/test deps.
+
 v0.2.0 -- 2025-11-02
 * **Removed single-segment `durable-queue` ns; use `clj-commons.durable-queue` instead**
 * Deprecate `delete!` because it is dangerous: it leaves queues in a corrupted state (because it deletes files without cleaning up in-memory state).
