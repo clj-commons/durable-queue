@@ -25,7 +25,7 @@
                     stress? ["-i" ":stress"]
                     :else   ["-e" ":benchmark"
                              "-e" ":stress"])]
-          (doseq [v (if all? ["1.10" "1.11" "1.12"] versions)]
+          (doseq [v (if all? ["1.10" "1.11" "1.12" "1.13"] versions)]
             (println "\nTesting Clojure" v)
             (apply shell "clojure"
                    (str "-M"
