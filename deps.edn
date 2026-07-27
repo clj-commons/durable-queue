@@ -1,20 +1,20 @@
 {:paths ["src"]
  :deps {org.clojure/clojure {:mvn/version "1.10.3"}
-        com.taoensso/nippy {:mvn/version "3.6.0"}
+        com.taoensso/nippy {:mvn/version "3.8.0"}
         org.clj-commons/primitive-math {:mvn/version "1.0.1"}
         org.clj-commons/byte-streams {:mvn/version "0.3.4"}}
 
  :aliases
  {;; for help: clojure -T:deps:build help/doc
-  :build {:deps {io.github.clojure/tools.build {:mvn/version "0.10.12"}
-                 slipset/deps-deploy {:mvn/version "0.2.2"}}
+  :build {:deps {io.github.clojure/tools.build {:mvn/version "0.10.14"}
+                 slipset/deps-deploy {:mvn/version "0.2.5"}}
           :ns-default build}
 
   ;; versions to test against:
   :1.10 {:override-deps {org.clojure/clojure {:mvn/version "1.10.3"}}}
   :1.11 {:override-deps {org.clojure/clojure {:mvn/version "1.11.4"}}}
   :1.12 {:override-deps {org.clojure/clojure {:mvn/version "1.12.4"}}}
-  :1.13 {:override-deps {org.clojure/clojure {:mvn/version "1.13.0-alpha2"}}}
+  :1.13 {:override-deps {org.clojure/clojure {:mvn/version "1.13.0-alpha5"}}}
 
   ;; running tests/checks of various kinds:
   :test {:extra-paths ["test"]
